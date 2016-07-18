@@ -2324,6 +2324,7 @@ DECLARE
 v_branch RECORD;
 
 v_U_OS REAL; -- Oberspannung (Volt)
+v_U_US REAL; -- Unterspannung (Volt)
 v_u_kr REAL; -- relative Kurzschlussspannung (%)
 v_Z_TOS REAL; -- Transformatorimpedanz (Ohm)
 v_X_TOS REAL; -- Blindwiderstand  (Ohm)
@@ -2346,15 +2347,21 @@ FOR v_branch IN
 		v_S_long_MVA_sum_max := (10^(-6))*(SELECT max (S_long_sum) 
 						FROM bus_data 
 						WHERE id = v_branch.f_bus OR id = v_branch.t_bus);
-		v_numb_transformers := (SELECT ceil( v_S_long_MVA_sum_max/(SELECT S_MVA FROM transformer_specifications))); -- Wird auf nächste ganze Zahl aufgerundet.
 
 		
 		v_U_OS := (SELECT max(voltage) FROM bus_data 
 					WHERE 	id = v_branch.f_bus OR 
 						id = v_branch.t_bus);
+						
+		v_U_US := (SELECT min(voltage) FROM bus_data 
+					WHERE 	id = v_branch.f_bus OR 
+						id = v_branch.t_bus);	
+						
+		v_numb_transformers := (SELECT ceil(v_S_long_MVA_sum_max / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US))); -- Wird auf nächste ganze Zahl aufgerundet.
+						
+		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
-		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications);
-		v_u_kr := (SELECT u_kr FROM transformer_specifications);
+		v_u_kr := (SELECT u_kr FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
 		v_Z_TOS := v_u_kr/100 * v_u_OS^2 / v_Srt;
 		
@@ -2374,7 +2381,7 @@ FOR v_branch IN
 			SET	br_r = 0,
 				br_x = v_X_TOS_all / v_Z_base, --(p.u.)
 				br_b = 0,
-				S_long = (10^6) * v_numb_transformers * (SELECT S_MVA FROM transformer_specifications),
+				S_long = (10^6) * v_numb_transformers * (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US),
 				tap = 1,
 				shift = 0,
 				numb_transformers = v_numb_transformers
