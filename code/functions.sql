@@ -1955,6 +1955,7 @@ v_branch_t_bus BIGINT;
 v_branch_cables INT;
 v_branch_power TEXT;
 v_branch_length FLOAT;
+v_branch_line_id BIGINT;
 
 v_transfer_bus_bus_data_id BIGINT;
 
@@ -1975,7 +1976,6 @@ v_new_way_length_end FLOAT;
 v_closest_bus_id BIGINT;
 
 v_max_bus_id BIGINT;
-v_max_branch_id BIGINT;
 
 BEGIN
 
@@ -1984,20 +1984,26 @@ IF (SELECT val_bool
 	WHERE val_description = 'transfer_busses') -- Only if transfer_busses is selected True (Python Script)
 	THEN
 
-	-- All the substations that are allready found can be ignored
-	DELETE FROM transfer_busses
+	CREATE TABLE transfer_busses_connect AS 
+		SELECT * FROM transfer_busses; -- New table for calculation
+		
+	-- All the substations that are allready osmTGmod busses can be ignored
+	DELETE FROM transfer_busses_connect
 		WHERE osm_id IN (SELECT substation_id FROM bus_data);
 
 	LOOP -- Loops until all transfer busses are connected.
-		v_cnt := (SELECT count(*) FROM transfer_busses);
+		v_cnt := (SELECT count(*) FROM transfer_busses_connect);
 		EXIT WHEN v_cnt = 0;
 
-		v_smallest_dist := 500000; -- Initial buffer size in meters
+		v_smallest_dist := 500000; -- Initial buffer size in meters (=500km)...
+		-- ... within this buffer the first buffer will search for lines...
+		--... the buffer will then be lowered anytime a closer line is found.
 
-		-- Loops through all (left) transfer busses
+		-- Loops through all (left) transfer busses...
+		-- ... and finds the one that is closest to the grid.
 		FOR v_trans_bus IN
 			SELECT osm_id, center_geom
-				FROM transfer_busses
+				FROM transfer_busses_connect
 
 		LOOP
 			-- Geography allows to set the buffer radius in meters.
@@ -2006,18 +2012,20 @@ IF (SELECT val_bool
 							v_smallest_dist)::geometry;
 							
 		
-		 	FOR v_branch IN
-				SELECT branch_id, voltage, way, f_bus, t_bus, cables, power, length
+		 	FOR v_branch IN --For every transfer bus (upper loop), this loop goes through...
+					--... all lines within (intersection) the buffer
+				SELECT branch_id, voltage, way, f_bus, t_bus, cables, power, length, line_id
 					FROM branch_data
 					WHERE 	ST_Intersects(way, v_search_area) AND -- Just the lines/branches within that intersect the buffer
-						frequency = 50
+						frequency = 50 -- Only connection to AC system
 			LOOP
 
 				v_this_dist := ST_Distance(	v_trans_bus.center_geom::geography, 
 								v_branch.way::geography); -- in meters
-
+					-- ST_Distance looks for uses closest point on line!
 				
-				IF (v_this_dist < v_smallest_dist)
+				IF (v_this_dist < v_smallest_dist) 	-- In case a new smallest distance is found...
+									-- ...values are saved for the current transfer bus and the current line
 					THEN 
 					v_smallest_dist := v_this_dist;
 					v_trans_bus_id := v_trans_bus.osm_id;
@@ -2030,81 +2038,91 @@ IF (SELECT val_bool
 					v_branch_cables := v_branch.cables;
 					v_branch_power := v_branch.power;
 					v_branch_length := v_branch.length;
+					v_branch_line_id := v_branch.line_id;
 
 				END IF;
 -- 				
 			END LOOP;
 		END LOOP;
+		-- At this point, a transfer bus has been identified, that is closest to the grid.
+		-- Furthermore, the respective line is known (and all necesary values)
 
-		-- Here, all values for the new branches and busses are calculated
-		-- for new bus:
-		v_closest_point_loc := ST_LineLocatePoint(	v_branch_way, 
-								v_trans_bus_geom); --FLOAT between 0 and 1 (Point location on Linesting)
-
-		v_closest_point_geom := ST_LineInterpolatePoint(v_branch_way, 
-								v_closest_point_loc); -- Geometry of closest point
-
-		-- Checks if some bus is less than 75m away
-		v_closest_bus_id := NULL;
-		IF v_branch_length * v_closest_point_loc < 75
-			THEN
-			v_closest_bus_id := v_branch_f_bus;
-			END IF;
-		IF v_branch_length * (1 - v_closest_point_loc) < 75
-			THEN
-			v_closest_bus_id := v_branch_t_bus;
-			END IF;
-
-		-- In every case a new bus (transfer bus) needs to be added:
+		-- 1) In any case a new bus (transfer bus) needs to be added:
 		v_max_bus_id := (SELECT max(id) FROM bus_data);	
 
-		v_transfer_bus_bus_data_id := v_max_bus_id + 1;
 		INSERT INTO bus_data (	id, 
 					the_geom, 
 					voltage, 
 					frequency, 
 					substation_id, 
 					cntr_id)
-			VALUES (v_transfer_bus_bus_data_id, 
+			VALUES (v_max_bus_id + 1, 
 				v_trans_bus_geom,
 				v_branch_voltage,
 				50,
 				v_trans_bus_id,
 				'DE');
-				
-		IF NOT v_closest_bus_id IS NULL --thus, there is a close bus/substation
+
+
+		-- 2) The closest point needs to be located on the line:
+		
+		-- The closest point on the line (used for connection) is located:
+		v_closest_point_loc := ST_LineLocatePoint(	v_branch_way, 
+								v_trans_bus_geom); --FLOAT between 0 and 1 (Point location on Linesting)
+		-- Geometry of the closest point:
+		v_closest_point_geom := ST_LineInterpolatePoint(v_branch_way, 
+								v_closest_point_loc); -- Geometry of closest point
+
+		-- Checks if any grid-bus is less than 75m (along the line) away
+		v_closest_bus_id := NULL;
+		IF v_branch_length * v_closest_point_loc < 75 -- If close to the beginning...
+			THEN
+			v_closest_bus_id := v_branch_f_bus; -- ...then take "from-bus"
+			END IF;
+		IF v_branch_length * (1 - v_closest_point_loc) < 75 -- If close to the end...
+			THEN
+			v_closest_bus_id := v_branch_t_bus; -- ...then take "to-bus"
+			END IF;
+
+
+		-- 3) Two cases: 	-- a) There is a close bus, 
+					-- b) no bus is close	
+
+		--a) A close bus is found:
+		-- The transfer bus is directly connected to this found (close) bus
+		-- (via straight ground cable)	
+		IF NOT v_closest_bus_id IS NULL 
 			THEN
 
 			v_new_connection_geom := ST_MakeLine(	v_trans_bus_geom, (SELECT the_geom 
 								FROM bus_data 
-								WHERE id = v_closest_bus_id));
-			v_new_connection_length := ST_Length(v_new_connection_geom::geography);
+								WHERE id = v_closest_bus_id)); -- Straight line
+			v_new_connection_length := ST_Length(v_new_connection_geom::geography); -- Length of the new straight line
 			
-				--make new line here and use this distance!!!!	
-			v_max_branch_id := (SELECT max(branch_id) FROM branch_data);
-			INSERT INTO branch_data (	branch_id, 
-							length,
+			-- New branch is inserted:
+			INSERT INTO branch_data (	length,
 							f_bus,
 							t_bus,
 							voltage,
 							cables,
 							frequency,
 							power,
-							way)
-				VALUES(	v_max_branch_id + 1,
-					v_new_connection_length,
-					v_transfer_bus_bus_data_id, --f_bus
-					v_closest_bus_id, --t_bus
+							way,
+							transfer)
+				VALUES( v_new_connection_length,
+					v_max_bus_id + 1, --f_bus (This is the transfer bus)
+					v_closest_bus_id, --t_bus (This is the close bus)
 					v_branch_voltage, -- of the found branch
 					3,
 					50,
-					'cable',
-					v_new_connection_geom);
+					'cable',--ground cable connection
+					v_new_connection_geom,
+					TRUE);
 				
-			
+		--b) No direct connection to any close bus	
 		ELSE -- no direct connection to any bus...
 
-			--... the other bus represents the new grid-bus (Muffe)
+			-- Another bus (along the close line) needs to be inserted
 			INSERT INTO bus_data (	id, 
 						the_geom, 
 						voltage, 
@@ -2117,65 +2135,68 @@ IF (SELECT val_bool
 					50,
 					NULL,
 					'DE');
+
 										
-			-- for new (split-up) branches
+			-- The old branch needs to be split-up:
+
+			-- Geometry of the first part:
 			v_new_way_geom_start := ST_Line_Substring(	v_branch_way, 
-									0, 
-									v_closest_point_loc); -- New line Substring (first part)
-									
+									0, -- (from 0 to location of closest point)
+									v_closest_point_loc); 
+			-- Length of first part in meters.						
 			v_new_way_length_start := ST_length(v_new_way_geom_start::geography);
-									
+
+			-- Geometry of the second part					
 			v_new_way_geom_end := ST_Line_Substring(	v_branch_way, 
 									v_closest_point_loc, 
-									1); -- New line Substring (second part)
-
+									1); -- (from location of closest point to 100%)
+			-- Length of the second part in meters.
 			v_new_way_length_end := ST_length(v_new_way_geom_end::geography);
 
 				
 			DELETE FROM branch_data WHERE branch_id = v_branch_id; -- Old branch needs to be deleted
-				
-			v_max_branch_id := (SELECT max(branch_id) FROM branch_data);
+			
 			-- 3 branches are inserted: the 2 substrings, and the new one to connect the transfer bus:
 			
 			-- Start Substring Branch:
-			INSERT INTO branch_data (	branch_id, 
-							length,
+			INSERT INTO branch_data (	length,
 							f_bus,
 							t_bus,
 							voltage,
 							cables,
 							frequency,
 							power,
-							way)
-				VALUES(	v_max_branch_id + 1,
-					v_new_way_length_start,
+							way,
+							transfer)
+				VALUES(	v_new_way_length_start,
 					v_branch_f_bus, --from old "from-bus" to new closest point
 					v_max_bus_id + 2, --the new grid bus
 					v_branch_voltage,
 					v_branch_cables,
 					50,
 					v_branch_power,
-					v_new_way_geom_start);
+					v_new_way_geom_start,
+					TRUE);
 
 			-- End Substring Branch:
-			INSERT INTO branch_data (	branch_id, 
-							length,
+			INSERT INTO branch_data (	length,
 							f_bus,
 							t_bus,
 							voltage,
 							cables,
 							frequency,
 							power,
-							way)
-				VALUES(	v_max_branch_id + 2,
-					v_new_way_length_end,
+							way,
+							transfer)
+				VALUES(	v_new_way_length_end,
 					v_max_bus_id + 2, -- from new closest point to old "to-bus"
 					v_branch_t_bus,
 					v_branch_voltage,
 					v_branch_cables,
 					50,
 					v_branch_power,
-					v_new_way_geom_end);
+					v_new_way_geom_end,
+					TRUE);
 
 				
 			-- New branch (connection) from closest point to transfer bus
@@ -2183,30 +2204,32 @@ IF (SELECT val_bool
 								v_closest_point_geom);
 			v_new_connection_length := ST_Length(v_new_connection_geom::geography);
 			
-			INSERT INTO branch_data (	branch_id, 
-							length,
+			INSERT INTO branch_data (	length,
 							f_bus,
 							t_bus,
 							voltage,
 							cables,
 							frequency,
 							power,
-							way)
-				VALUES(	v_max_branch_id + 3,
-					v_new_connection_length,
-					v_max_bus_id + 1,
-					v_max_bus_id + 2,
+							way,
+							transfer)
+				VALUES(	v_new_connection_length,
+					v_max_bus_id + 1, -- From transfer bus..
+					v_max_bus_id + 2, -- To closest point (new grid-bus) 
 					v_branch_voltage,
 					3,
 					50,
 					v_branch_power,
-					v_new_connection_geom);
+					v_new_connection_geom,
+					TRUE);
 		END IF;
 				
-		DELETE FROM transfer_busses
+		DELETE FROM transfer_busses_connect
 			WHERE osm_id = v_trans_bus_id;
 	END LOOP;
 
+	DROP TABLE transfer_busses_connect;
+	-- Count needs to be reset
 	UPDATE bus_data 
 	SET cnt = (SELECT count (*) 
 			FROM branch_data 

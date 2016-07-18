@@ -975,8 +975,10 @@ SELECT otg_connect_transformers ();
 -- Here, unused transfer busses are connected to the grid. 
 -- Needs to be done before branches are simplified, because...
 --...transfer busses are prefaribly connected to other busses.
-ALTER TABLE branch_data ADD COLUMN transfer BOOLEAN DEFAULT FALSE;
+ALTER TABLE branch_data ADD COLUMN transfer BOOLEAN DEFAULT FALSE; -- for debugging
+
 SELECT otg_transfer_busses ();
+
 
 	-- LEITUNGS ZUSAMMENFASSUNG
 	-- (Einige Leitungsabscnitte können mit dem Ziel die Berechnung zu Beschleunigen zusammengefasst werden)
@@ -1000,7 +1002,7 @@ ALTER TABLE branch_data DROP column way;
 		-- ZUSAMMEFASSUNG VON BRANCHES
 
 		
---SELECT otg_simplify_branches_iteration ();
+SELECT otg_simplify_branches_iteration ();
 
 
 		-- UMWANDLUNG DATENTYPEN
@@ -1104,7 +1106,7 @@ SELECT otg_calc_max_node_power ();
 -- Spalte für Anzahl an Standard-Trafos
 ALTER TABLE branch_data ADD COLUMN numb_transformers INT;
 
-SELECT otg_calc_transformer_specifications ();
+--SELECT otg_calc_transformer_specifications ();
 
 
 -- BUS-TYPE / SLACK_KNOTEN-UNTERSUCHUNG
