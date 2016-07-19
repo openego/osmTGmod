@@ -1998,7 +1998,7 @@ IF (SELECT val_bool
 		v_cnt := (SELECT count(*) FROM transfer_busses_connect);
 		EXIT WHEN v_cnt = 0;
 
-		v_smallest_dist := 20000; -- Initial buffer size in meters (=20km)...
+		v_smallest_dist := 25000; -- Initial buffer size in meters (=20km)...
 		-- ... within this buffer the first buffer will search for lines...
 		--... the buffer will then be lowered anytime a closer line is found.
 
@@ -2022,9 +2022,15 @@ IF (SELECT val_bool
 					WHERE 	ST_Intersects(way, v_search_area) AND -- Just the lines/branches within that intersect the buffer
 						frequency = 50 -- Only connection to AC system
 			LOOP
-
+				-- Calculates the exact shortest Distance on the Line:
+				v_closest_point_loc := ST_LineLocatePoint(	v_branch.way, 
+										v_trans_bus.center_geom); --FLOAT between 0 and 1 (Point location on Linesting)
+				-- Geometry of the closest point:
+				v_closest_point_geom := ST_LineInterpolatePoint(v_branch.way, 
+										v_closest_point_loc); -- Geometry of closest point
+										
 				v_this_dist := ST_Distance(	v_trans_bus.center_geom::geography, 
-								v_branch.way::geography); -- in meters
+								v_closest_point_geom::geography); -- in meters
 					-- ST_Distance looks for uses closest point on line!
 				
 				IF (v_this_dist < v_smallest_dist) 	-- In case a new smallest distance is found...
