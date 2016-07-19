@@ -1942,6 +1942,8 @@ DECLARE
 v_search_area geometry (Polygon, 4326);
 
 v_cnt INT;
+v_cnt_2 INT;
+
 v_smallest_dist FLOAT;
 v_this_dist FLOAT;
 
@@ -1977,6 +1979,7 @@ v_closest_bus_id BIGINT;
 
 v_max_bus_id BIGINT;
 
+
 BEGIN
 
 IF (SELECT val_bool 
@@ -1995,7 +1998,7 @@ IF (SELECT val_bool
 		v_cnt := (SELECT count(*) FROM transfer_busses_connect);
 		EXIT WHEN v_cnt = 0;
 
-		v_smallest_dist := 500000; -- Initial buffer size in meters (=500km)...
+		v_smallest_dist := 20000; -- Initial buffer size in meters (=20km)...
 		-- ... within this buffer the first buffer will search for lines...
 		--... the buffer will then be lowered anytime a closer line is found.
 
@@ -2226,6 +2229,10 @@ IF (SELECT val_bool
 				
 		DELETE FROM transfer_busses_connect
 			WHERE osm_id = v_trans_bus_id;
+
+		v_cnt_2 := (SELECT count(*) FROM transfer_busses_connect);
+		EXIT WHEN v_cnt = v_cnt_2; -- If no new transfer-bus could be connected (in case nothing in buffer)
+		
 	END LOOP;
 
 	DROP TABLE transfer_busses_connect;
