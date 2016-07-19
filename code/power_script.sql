@@ -1106,7 +1106,7 @@ SELECT otg_calc_max_node_power ();
 -- Spalte für Anzahl an Standard-Trafos
 ALTER TABLE branch_data ADD COLUMN numb_transformers INT;
 
---SELECT otg_calc_transformer_specifications ();
+SELECT otg_calc_transformer_specifications ();
 
 
 -- BUS-TYPE / SLACK_KNOTEN-UNTERSUCHUNG
