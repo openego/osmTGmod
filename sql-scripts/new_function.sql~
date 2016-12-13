@@ -1,0 +1,173 @@
+--function otg_connect_busses_to_lines_1:
+--identifies buses, that should be connected to lines and breaks lines in the corresponding points
+--by inserting new buses and re-redining the lines. Iterative procedure, which might take some minutes to run since
+--only one point per individual line is processed per iteration
+--speed could be improved by processing the elements of branch_data_new_busses 
+--in the order of ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) while updating line_ids in branch_data_new_busses
+--please be aware: this function only inserts new busses, the busses are not yet connected!!!
+--...based on otg_transfer_busses...
+CREATE OR REPLACE FUNCTION otg_connect_busses_to_lines_1 () RETURNS void
+AS $$ 
+DECLARE
+
+branch_data RECORD;
+branch RECORD;
+v_closest_point_loc FLOAT;
+v_max_bus_id BIGINT;
+v_max_line_id BIGINT;
+v_new_way_geom_start geometry (Linestring, 4326);
+v_new_way_length_start FLOAT;
+v_new_way_geom_end geometry (Linestring, 4326);
+v_new_way_length_end FLOAT;
+
+BEGIN
+
+--find busses that should be connected to line
+DROP TABLE IF EXISTS branch_data_new_busses;
+CREATE TABLE branch_data_new_busses AS
+(SELECT DISTINCT
+    ln_id,
+    pt_geom
+FROM
+    (SELECT 
+        ln.way AS ln_geom,
+        pt.the_geom AS pt_geom, 
+        ln.line_id AS ln_id, 
+        pt.id AS pt_id
+    FROM 
+        bus_data pt, 
+        power_line_sep ln 
+    WHERE 
+        ST_DWithin(pt.the_geom, ln.way, 0.0) AND ST_GeometryType(ST_LineMerge(ln.way))='ST_LineString' AND
+        ln.voltage=pt.voltage
+    ORDER BY ln_id,pt_geom,pt_id
+    ) as subquery
+WHERE ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom)>0 and ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) < 1
+);
+
+--break lines at the respective points and insert new buses
+LOOP
+--do this iteratively, since a single line could be affected multiple times
+--in this case, only one additional bus will be inserted ber iteration step since the line_id will be deleted
+--during this process -> iteration required, until all issues were solved.
+IF (SELECT COUNT(*) FROM branch_data_new_busses) < 1 THEN
+	EXIT;
+END IF;
+FOR branch IN
+	SELECT * FROM branch_data_new_busses
+	LOOP
+	--select corresponding element in power_line_sep (if it still should exist and was not already deleted...)
+	FOR branch_data IN SELECT * FROM power_line_sep WHERE line_id=branch.ln_id LIMIT 1
+		LOOP
+		-- Calculates the exact shortest Distance on the Line:
+		v_closest_point_loc := ST_LineLocatePoint(branch_data.way,branch.pt_geom); --FLOAT between 0 and 1 (Point location on Linesting)
+
+		-- 1) In any case a new bus (transfer bus) needs to be added:
+		v_max_bus_id := (SELECT max(id) FROM bus_data);	
+
+		INSERT INTO bus_data (	id, 
+					the_geom, 
+					voltage, 
+					frequency,
+					cntr_id)
+			VALUES (v_max_bus_id + 1, 
+				branch.pt_geom, -- geom of transfer_bus to be connected
+				branch_data.voltage, -- voltage of branch to connect to
+				50,
+				'DE');
+
+				
+		-- The old branch needs to be split-up:
+
+		-- Geometry of the first part:
+		v_new_way_geom_start := ST_Line_Substring(branch_data.way, 
+									0, -- (from 0 to location of closest point)
+									v_closest_point_loc); 
+		-- Length of first part in meters.						
+		v_new_way_length_start := ST_length(v_new_way_geom_start::geography);
+
+		-- Geometry of the second part					
+		v_new_way_geom_end := ST_Line_Substring(branch_data.way, 
+									v_closest_point_loc, 
+									1); -- (from location of closest point to 100%)
+		-- Length of the second part in meters.
+		v_new_way_length_end := ST_length(v_new_way_geom_end::geography);
+
+				
+		DELETE FROM power_line_sep WHERE line_id = branch.ln_id; -- Old branch needs to be deleted
+			
+		-- 2 branches are inserted: the 2 substrings, and the new one to connect the transfer bus:
+		v_max_line_id := (SELECT max(line_id) FROM power_line_sep);	
+			
+		-- Start Substring Branch:
+		INSERT INTO power_line_sep (	line_id,
+						length,
+						f_bus,
+						t_bus,
+						voltage,
+						cables,
+						frequency,
+						power,
+						way)
+				VALUES(	v_max_line_id + 1,
+					v_new_way_length_start,
+					branch_data.f_bus, --from old "from-bus" to new closest point
+					v_max_bus_id + 1, --the new grid bus
+					branch_data.voltage,
+					branch_data.cables,
+					50,
+					branch_data.power,
+					v_new_way_geom_start);
+
+		-- End Substring Branch:
+		INSERT INTO power_line_sep (	line_id,
+						length,
+						f_bus,
+						t_bus,
+						voltage,
+						cables,
+						frequency,
+						power,
+						way)
+				VALUES(	v_max_line_id + 2,
+					v_new_way_length_end,
+					v_max_bus_id + 1, -- from new closest point to old "to-bus"
+					branch_data.t_bus,
+					branch_data.voltage,
+					branch_data.cables,
+					50,
+					branch_data.power,
+					v_new_way_geom_end);
+
+		END LOOP;
+	END LOOP;
+
+DROP TABLE IF EXISTS branch_data_new_busses;
+CREATE TABLE branch_data_new_busses AS
+(SELECT DISTINCT
+    ln_id,
+    pt_geom
+FROM
+    (SELECT 
+        ln.way AS ln_geom,
+        pt.the_geom AS pt_geom, 
+        ln.line_id AS ln_id, 
+        pt.id AS pt_id
+    FROM 
+        bus_data pt, 
+        power_line_sep ln 
+    WHERE 
+        ST_DWithin(pt.the_geom, ln.way, 0.0) AND ST_GeometryType(ST_LineMerge(ln.way))='ST_LineString' AND
+        ln.voltage=pt.voltage
+    ORDER BY ln_id,pt_geom,pt_id
+    ) as subquery
+WHERE ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom)>0 and ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) < 1
+);
+END LOOP;
+DROP TABLE IF EXISTS branch_data_new_busses;
+END
+$$
+LANGUAGE plpgsql;
+
+select otg_connect_busses_to_lines ();
+
