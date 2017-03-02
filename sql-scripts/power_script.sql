@@ -1208,4 +1208,5 @@ ALTER TABLE bus_data ADD COLUMN qd REAL;
  -- pd und qd der Buses von außerhalb vorgeben.
  -- Gleichstromleitung darf nur netzintegriert verwendet werden, damit GLS lösbar bleibt.
 
-
+--delete branches which somehow (and for some reason) are not ok
+DELETE FROM branch_data WHERE t_bus IS NULL or f_bus IS NULL;
