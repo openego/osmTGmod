@@ -1841,12 +1841,19 @@ BEGIN
 	-- einfach ADDITION
 	v_length := v_length + v_line.length; --Länge wird addiert
 	-- ARRAY wird durch value erweitert
-	v_circuit_ids = v_circuit_ids || v_line.relation_id;
 	v_voltage = v_voltage || v_line.voltage;
 	v_cables = v_cables || v_line.cables;
 	v_frequency = v_frequency || v_line.frequency;
 	v_wires = v_wires || v_line.wires;	
 	v_power = v_power || v_line.power;
+
+	--DK: check, if relation information is available, -1 otherwise
+	--(since Null=Null results in false in the next step...)
+	IF v_line.relation_id IS NULL THEN
+		v_circuit_ids = v_circuit_ids || -1::BIGINT;
+	ELSE
+		v_circuit_ids = v_circuit_ids || v_line.relation_id;
+	END IF;
 	
 	-- ARRAYS werden durch ARRAYS erweitert
 	v_line_ids = v_line_ids || v_line.line_ids;
@@ -1905,6 +1912,12 @@ DECLARE
 v_count_old INT;
 v_count_new INT;
 BEGIN
+
+	UPDATE bus_data 
+	SET cnt = (SELECT count (*) 
+			FROM branch_data 
+			WHERE branch_data.f_bus = bus_data.id OR branch_data.t_bus = bus_data.id);
+
 	v_count_new := (SELECT count (*) FROM bus_data Where cnt = 2 AND substation_id IS NULL);
 	
 	LOOP
@@ -1928,7 +1941,8 @@ LANGUAGE plpgsql;
 
 	-- GRAPH_DFS
 
--- Untersucht den Graph auf Zusammenhang. Knoten, die nicht zum Hauptgraph gehören behalten discovered = false
+-- Untersucht den Graph auf Zusammenhang. Knoten, die nicht zum Graph gehören behalten, erhalten discovered = true
+-- DK: funktion angepasst. vor der ersten ausführung ist nun "UPDATE bus_data SET discovered = false;" erforderlich
 CREATE OR REPLACE FUNCTION otg_graph_dfs(v_vertex bigint)
   RETURNS void AS
 $BODY$ 
@@ -1938,7 +1952,7 @@ v_array_length INT;
 v_cnt BIGINT;
 this_v_array BIGINT[];
 BEGIN
-UPDATE bus_data SET discovered = false;
+--UPDATE bus_data SET discovered = false;
 CREATE TABLE this (v_id bigint);
 CREATE TABLE v_next (v_id bigint);
 INSERT into this values (v_vertex);
@@ -1957,6 +1971,7 @@ LOOP
 		v_neighbours := ARRAY (SELECT t_bus FROM branch_data WHERE f_bus = this_v_array[k]); 
 		v_neighbours := v_neighbours || ARRAY (SELECT f_bus FROM branch_data WHERE t_bus = this_v_array[k]);
 		v_array_length := (SELECT array_length (v_neighbours, 1));
+		IF v_array_length > 0 THEN
 		FOR i IN 1..v_array_length
 			LOOP 
 			IF (SELECT discovered FROM bus_data WHERE id = v_neighbours [i]) = false
@@ -1967,6 +1982,7 @@ LOOP
 				END IF;
 			END IF;
 			END LOOP;
+		END IF;
 	END LOOP;
 --David: s.o.
 --	DROP TABLE this;
@@ -2069,6 +2085,7 @@ IF (SELECT val_bool
 	THEN
 -- Evtl. vorher untersuchen
 -- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
+	UPDATE bus_data SET discovered = false;
 	PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
 	WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
 	LIMIT 1)); -- ggf. id direkt einfügen	
@@ -2139,6 +2156,7 @@ IF (SELECT val_bool
 	WHERE val_description = 'transfer_busses') -- Only if transfer_busses is selected True (Python Script)
 	THEN
 
+	DROP TABLE IF EXISTS transfer_busses_connect;
 	CREATE TABLE transfer_busses_connect AS 
 		SELECT * FROM transfer_busses; -- New table for calculation
 		
@@ -2562,6 +2580,7 @@ IF (SELECT val_bool
  	WHERE val_description = 'conn_subgraphs') -- Only if subgraphs is selected True (Python Script)
  	THEN 
  	
+ 	UPDATE bus_data SET discovered = false;
  	PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
 			WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
 			LIMIT 1));
@@ -2581,8 +2600,8 @@ IF (SELECT val_bool
  				FOR v_substation IN
  				SELECT id, voltage, the_geom
  					FROM bus_data
- 					WHERE 	frequency = 50 AND NOT 
-						substation_id IS NULL AND -- Only substations no grid busses (Muffen)
+ 					WHERE 	frequency = 50 AND 
+						--NOT substation_id IS NULL AND -- Only substations no grid busses (Muffen) -- DK: entfernt, weil zum Zeitpunkt der Ausführung des Skiptes diemeisten Muffen schon entfernt wurden.
  						discovered = true AND
  						voltage = v_subgrid_bus.voltage
  					ORDER BY voltage -- Will be connected with 110 preferred
@@ -2601,6 +2620,9 @@ IF (SELECT val_bool
  				
  				END LOOP;
  			END LOOP;
+ 		IF v_subgrid_bus_id IN (SELECT id FROM subgrids_connect)
+ 			THEN -- only, if a new connection is found
+ 			PERFORM otg_graph_dfs ( v_subgrid_bus_id );
 		v_max_branch_id := (SELECT max(branch_id) FROM branch_data); -- connect subgrid-bus to main grid bus with new line
  			INSERT INTO branch_data (	branch_id, 
  							length,
@@ -2623,22 +2645,19 @@ IF (SELECT val_bool
  					ST_Multi(ST_MakeLine(	v_subgrid_bus_geom,
  								v_substation_geom)),
 					3); -- 3 stands for connection of a subgrid to the main grid.
-		
-		PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
-			WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
-			LIMIT 1));
 --David: Repeated drops and creates in single transaction seems to consume locks and memory. Try to reuse table instead... 		
 --		DROP TABLE subgrids_connect;
 --		CREATE TABLE subgrids_connect AS 
 --			SELECT * FROM bus_data
---			WHERE discovered=false; 
+--			WHERE discovered=false;
+		END IF;
 		DELETE FROM subgrids_connect;
 		INSERT INTO subgrids_connect 
 			SELECT * FROM bus_data
 			WHERE discovered=false;
 --David: Loop abbrechen, falls keine weiteren Subgrids mehr angeschlossen werden können (z.B. wegen minimaler Entfernung / Spannungslevel) 
 		v_cnt_new := (SELECT count(*) FROM subgrids_connect);
-		EXIT WHEN v_cnt_new = v_cnt; 
+		EXIT WHEN v_cnt_new = v_cnt or v_cnt_new = 0; 
 		v_cnt := v_cnt_new;
 	END LOOP;
 -- 4. drop working table
@@ -2918,7 +2937,7 @@ FOR v_branch IN
 		v_U_US := (SELECT min(voltage) FROM bus_data 
 					WHERE 	id = v_branch.f_bus OR 
 						id = v_branch.t_bus);	
-						
+					
 		v_numb_transformers := (SELECT ceil(v_S_long_MVA_sum_max / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US))); -- Wird auf nächste ganze Zahl aufgerundet.
 						
 		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
@@ -4324,7 +4343,7 @@ LANGUAGE plpgsql;
 --speed could be improved by processing the elements of branch_data_new_busses 
 --in the order of ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) while updating line_ids in branch_data_new_busses
 --please be aware: this function only inserts new busses, the busses are not yet connected!!!
---...based on otg_transfer_busses...
+--...inspired by otg_transfer_busses...
 CREATE OR REPLACE FUNCTION otg_connect_busses_to_lines_1 () RETURNS void
 AS $$ 
 DECLARE
