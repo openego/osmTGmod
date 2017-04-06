@@ -1,8 +1,13 @@
-﻿-----------------------------------------------------------------------------------
---                                                                                 
---  Copyright "2015" "Wuppertal Institut"                                         
---                                                                                
---  Licensed under the Apache License, Version 2.0 (the "License");               
+/*
+extensions -
+script to load all extensions applied in osmTGmod and load osm raw data into database.
+__copyright__ 	= "NEXT ENERGY"
+__license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
+__url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
+__author__ 	= "lukasol"
+Contains: Proportions of the code by "Wuppertal Institut" (2015)                                          
+                                                                             
+--  Licensed under the Apache License, Version 2.0 (the "License")               
 --  you may not use this file except in compliance with the License.              
 --  You may obtain a copy of the License at                                       
 --                                                                                
@@ -12,11 +17,8 @@
 --  distributed under the License is distributed on an "AS IS" BASIS,             
 --  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.      
 --  See the License for the specific language governing permissions and           
---  limitations under the License.                                                
---                                                                                
------------------------------------------------------------------------------------ 
-
--- EXTENSIONS SKRIPT
+--  limitations under the License. 
+*/
 
 
 SET SCHEMA 'public';

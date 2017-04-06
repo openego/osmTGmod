@@ -1,8 +1,13 @@
-﻿-----------------------------------------------------------------------------------
---                                                                                 
---  Copyright "2015" "Wuppertal Institut"                                         
---                                                                                
---  Licensed under the Apache License, Version 2.0 (the "License");               
+/*
+electrical_properties -
+script to assign electrical parameters to all assets in osmTGmod.
+__copyright__ 	= "NEXT ENERGY"
+__license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
+__url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
+__author__ 	= "lukasol"
+Contains: Proportions of the code by "Wuppertal Institut" (2015)                                          
+                                                                             
+--  Licensed under the Apache License, Version 2.0 (the "License")               
 --  you may not use this file except in compliance with the License.              
 --  You may obtain a copy of the License at                                       
 --                                                                                
@@ -12,19 +17,14 @@
 --  distributed under the License is distributed on an "AS IS" BASIS,             
 --  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.      
 --  See the License for the specific language governing permissions and           
---  limitations under the License.                                                
---                                                                                
------------------------------------------------------------------------------------ 
-
---------------------------------------------------------------
--- SPEZIFIKATIONEN 
---------------------------------------------------------------
+--  limitations under the License. 
+*/
 
 SET SCHEMA 'public';
 SET CLIENT_ENCODING TO UTF8;
 SET STANDARD_CONFORMING_STRINGS TO ON;
 
--- AC-LEITUNGEN 
+-- AC-LINES
 
 DROP TABLE IF EXISTS branch_specifications;	
 CREATE TABLE branch_specifications (	spec_id serial NOT NULL PRIMARY KEY,
@@ -69,7 +69,7 @@ CREATE TABLE dcline_specifications (
 			I_A_therm REAL,	
 			leitertyp TEXT);
 
--- Die folgenden DAten werden aus der Quelle "Szenarien für eine langfristige Netzentwicklung" BMWI übernommen.
+-- Die folgenden Daten werden aus der Quelle "Szenarien für eine langfristige Netzentwicklung" BMWI übernommen.
 -- Die Quelle unterscheided CSC Kabel und FReileiung und VSC. Jedoch sind die fürs Netzmodell relevanten Kennwerte gleich
 -- Die thermisch maximale übertragungsleistung wird über den thermischen Grenzstrom berechnet.
 -- Bei HGÜ Leitungen ist wichtig zu verstehen, wie die spannung angegeben wird. Bei hin- und Rückleiter (Bipolar) wird i.d.R. +- angegeben

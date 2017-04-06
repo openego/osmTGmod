@@ -3,3 +3,13 @@ osmTGmod is a load-flow model of the German transmission-gird, based on the free
 
 ## Documentation
 For a detailed description/documentation, please refer to documentation.pdf
+
+## transfer busses
+Make sure current transfer-busses are taken from oedb. Use the following command to extract a csv:
+SELECT DISTINCT ON (osm_id) * FROM (
+SELECT * FROM model_draft.ego_grid_ehv_substation
+UNION
+SELECT subst_id, lon, lat, point, polygon, voltage, power_type, substation, osm_id, osm_www, frequency, subst_name, ref, operator, dbahn, status, otg_id FROM model_draft.ego_grid_hvmv_substation
+--GROUP BY osm_id
+ORDER BY osm_id
+) as foo;

@@ -1,8 +1,13 @@
-﻿-----------------------------------------------------------------------------------
---                                                                                 
---  Copyright "2015" "Wuppertal Institut"                                         
---                                                                                
---  Licensed under the Apache License, Version 2.0 (the "License");               
+/*
+build_up_db -
+script to set up db structure of osmTGmod.
+__copyright__ 	= "NEXT ENERGY"
+__license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
+__url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
+__author__ 	= "lukasol"
+Contains: Proportions of the code by "Wuppertal Institut" (2015)                                          
+                                                                             
+--  Licensed under the Apache License, Version 2.0 (the "License")               
 --  you may not use this file except in compliance with the License.              
 --  You may obtain a copy of the License at                                       
 --                                                                                
@@ -12,22 +17,14 @@
 --  distributed under the License is distributed on an "AS IS" BASIS,             
 --  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.      
 --  See the License for the specific language governing permissions and           
---  limitations under the License.                                                
---                                                                                
------------------------------------------------------------------------------------  
+--  limitations under the License. 
+*/
                  
 CREATE SCHEMA IF NOT EXISTS results;
 
 DROP VIEW IF EXISTS results.view_bus_data;
 DROP VIEW IF EXISTS results.view_branch_data;
 DROP VIEW IF EXISTS results.view_dcline_data;
-DROP VIEW IF EXISTS results.view_substations;
-DROP VIEW IF EXISTS results.view_problem_log;
-
-DROP TABLE IF EXISTS results.view_results;
-CREATE TABLE results.view_results (result_id INT);
-INSERT INTO results.view_results VALUES (NULL);
-
 
 CREATE TABLE IF NOT EXISTS results.results_metadata(
 	id INT NOT NULL PRIMARY KEY,
@@ -153,80 +150,6 @@ ALTER TABLE results.dcline_data DROP CONSTRAINT IF EXISTS result_fk;
 ALTER TABLE results.dcline_data 
 	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
 
-CREATE OR REPLACE VIEW results.view_dcline_data AS 
-	SELECT * FROM results.dcline_data 
-	WHERE result_id = (SELECT result_id FROM results.view_results);
-
-		
-CREATE TABLE IF NOT EXISTS results.nuts3_subst(
-		result_id INT,
-		nuts_id Character Varying (14),
-		substation_id BIGINT,
-		percentage NUMERIC,
-		distance NUMERIC);
-
-ALTER TABLE results.nuts3_subst DROP CONSTRAINT IF EXISTS result_fk;		
-ALTER TABLE results.nuts3_subst 
-	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
-	
-CREATE TABLE IF NOT EXISTS results.plz_subst(
-		result_id INT,
-		plz INTEGER,
-		substation_id BIGINT,
-		percentage NUMERIC,
-		distance NUMERIC);
-
-ALTER TABLE results.plz_subst DROP CONSTRAINT IF EXISTS result_fk;		
-ALTER TABLE results.plz_subst
-	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
-
-
-CREATE TABLE IF NOT EXISTS results.substations(
-		result_id INT,
-		view_id SERIAL NOT NULL PRIMARY KEY,
-		
-		osm_id BIGINT,
-		voltage TEXT,
-		s_long NUMERIC,
-		name TEXT,
-		geom geometry (Polygon, 4326),
-		center_geom geometry (Point, 4326));
-
-ALTER TABLE results.substations DROP CONSTRAINT IF EXISTS result_fk;		
-ALTER TABLE results.substations
-	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
-	
-CREATE OR REPLACE VIEW results.view_substations AS 
-	SELECT * FROM results.substations
-	WHERE result_id = (SELECT result_id FROM results.view_results);
-
-	
-CREATE TABLE IF NOT EXISTS results.problem_log (	
-		result_id INT,
-		view_id SERIAL NOT NULL PRIMARY KEY,
-		
-		object_type TEXT, -- Objekt-Typ des dargestellten Elements
-		line_id BIGINT [], -- Alle im Objekt enthaltenen lines (ways)
-		relation_id BIGINT, -- Relation_id des Objekts (0 für Branches, die aus ways stammen)
-		way geometry (MultiLineString, 4326), 
-		voltage INT,
-		cables INT,
-		wires INT, 
-		frequency REAL,
-		problem TEXT); -- Beschreibung des entsprechenden Problems
-
-ALTER TABLE results.problem_log DROP CONSTRAINT IF EXISTS result_fk;		
-ALTER TABLE results.problem_log
-	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
-	
-CREATE OR REPLACE VIEW results.view_problem_log AS 
-	SELECT * FROM results.problem_log
-	WHERE result_id = (SELECT result_id FROM results.view_results);
-	
--- DROP TABLE IF EXISTS main_station;
--- CREATE TABLE main_station (main_station_id BIGINT);
--- INSERT INTO main_station VALUES (NULL);
-
 -- Table for important abstraction values (still not entirely in use)
 DROP TABLE IF EXISTS abstr_values;
 CREATE TABLE abstr_values (	val_id SERIAL NOT NULL PRIMARY KEY,
@@ -258,7 +181,7 @@ INSERT INTO abstr_values VALUES (	DEFAULT,
 					NULL,
 					NULL);					
 
---Other functions access this osm_metadata
+-- Other functions access this osm_metadata
 DROP TABLE IF EXISTS osm_metadata;
 CREATE TABLE osm_metadata (downloaded date, imported date);
 INSERT INTO osm_metadata (downloaded, imported) VALUES (NULL, NULL);

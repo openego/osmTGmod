@@ -268,7 +268,7 @@ if not config_continue_run:
     next(reader, None) # Skips header
     logging.info("Copying transfer-busses from CSV to database...")
     for row in reader:
-        osm_id = str(row[10])        
+        osm_id = str(row[8])        
         if osm_id[:1] == 'w':
             object_type = 'way'
         elif osm_id[:1] == 'n':
@@ -276,13 +276,13 @@ if not config_continue_run:
         else:
             object_type = None        
         osm_id_int = int(osm_id[1:])            
-        center_geom = str(row[5])        
+        center_geom = str(row[3])        
         cur.execute("""
         INSERT INTO transfer_busses (osm_id, object_type, center_geom)
         VALUES (%s, %s, %s);
         """, (osm_id_int, object_type, center_geom))
         conn.commit()
-    logging.info("All transfer busses importes successfully")
+    logging.info("All transfer busses importeds successfully")
 
 # Execute power_script
 logging.info("Preparing execution of abstraction script 'sql-scripts/power_script.sql' ...")
