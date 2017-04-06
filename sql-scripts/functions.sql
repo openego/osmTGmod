@@ -2663,10 +2663,6 @@ IF (SELECT val_bool
 -- 4. drop working table
 DROP TABLE subgrids_connect;
 END IF;
--- assign transformer to short connections:
-UPDATE branch_data
-	SET power = 'transformer'
-		WHERE length < 5;
 END
 $$
 LANGUAGE plpgsql;

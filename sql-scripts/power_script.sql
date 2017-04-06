@@ -1141,15 +1141,6 @@ SELECT otg_calc_max_node_power ();
 -- Spalte für Anzahl an Standard-Trafos
 ALTER TABLE branch_data ADD COLUMN numb_transformers INT;
 
--- correct transformers connecting just the same voltage levels (which currently happens in 1 case) to lines
-UPDATE branch_data SET power='line' WHERE branch_id IN
-(SELECT branch_id from (
-	SELECT 	branch_id,
-		(select min(voltage) from bus_data where id=f_bus or id=t_bus) as lower_voltage,
-		(select max(voltage) from bus_data where id=f_bus or id=t_bus) as higher_voltage
-	FROM branch_data WHERE power = 'transformer') as subquery
-WHERE lower_voltage=higher_voltage)
-
 SELECT otg_calc_transformer_specifications ();
 
 
