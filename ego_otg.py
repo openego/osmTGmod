@@ -5,7 +5,7 @@ This script sets up a database with all required data for running osmTGmod.
 Abstraction scripts are then used to process the data up to a abstracted grid model.
 requires python3
 """
-__copyright__ 	= "NEXT ENERGY"
+__copyright__ 	= "DLR Institute of Networked Energy Systems"
 __license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
 __url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
 __author__ 	= "lukasol"
