@@ -1,7 +1,12 @@
------------------------------------------------------------------------------------
---                                                                                 
---  Copyright for proportions of the code by "Wuppertal Institut" (2015) ads part of the project openTGmod                                         
---                                                                                
+/*
+functions -
+script to collect all functions applied in osmTGmod.
+__copyright__ 	= "DLR Institute of Networked Energy Systems"
+__license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
+__url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
+__author__ 	= "lukasol"
+Contains: Proportions of the code by "Wuppertal Institut" (2015)                                          
+                                                                             
 --  Licensed under the Apache License, Version 2.0 (the "License")               
 --  you may not use this file except in compliance with the License.              
 --  You may obtain a copy of the License at                                       
@@ -12,13 +17,8 @@
 --  distributed under the License is distributed on an "AS IS" BASIS,             
 --  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.      
 --  See the License for the specific language governing permissions and           
---  limitations under the License.                                                
---                                                                                
------------------------------------------------------------------------------------ 
-
-----------------------------------------------------------------------------------------
--- FUNKTIONEN
-----------------------------------------------------------------------------------------
+--  limitations under the License. 
+*/
 
 
 -- UMWANDLUNG DATENTYPEN (ALLGEMEIN)
@@ -39,64 +39,6 @@ EXCEPTION WHEN others THEN -- Exception ist eine Erweiterung des Begin-Blocks un
 END;
 $$
 LANGUAGE plpgsql IMMUTABLE;
-
-CREATE OR REPLACE FUNCTION otg_isint (TEXT) RETURNS BOOLEAN 
-AS $$
-DECLARE
-	x INT;
-BEGIN
-	x = $1::INT;
-	RETURN TRUE;
-EXCEPTION WHEN others THEN -- Exception ist eine Erweiterung des Begin-Blocks und wird ausgeführt, wenn ein Error vorkommt
-	RETURN FALSE; -- others steht für alle Arten von Fehlern (sammelt alles auf)
-END;
-$$
-LANGUAGE plpgsql IMMUTABLE;
-
-
--- Function that gets max ID of specified table and specified column
-CREATE OR REPLACE FUNCTION otg_get_max_id(v_table TEXT, v_column TEXT) RETURNS BIGINT
-AS $$
-DECLARE
-v_max_id BIGINT;
-
-BEGIN
-EXECUTE 'SELECT max('|| v_column ||') FROM ' || v_table INTO v_max_id;
-IF v_max_id IS NULL THEN v_max_id := 0; END IF;
-RETURN v_max_id;	
-END; 
-$$
-LANGUAGE plpgsql;
-
-
-
--- CREATE OR REPLACE FUNCTION otg_update_osm (v_date date) RETURNS void
--- AS $$
--- DECLARE
--- v_object RECORD;
--- 
--- BEGIN
--- FOR v_object IN
--- 	SELECT * FROM nodes
--- LOOP
--- 	IF NOT v_object.id IN (SELECT id FROM osm_data.nodes)
--- 	THEN	INSERT INTO osm_data.nodes (id, version, user_id, tstamp, changeset_id, tags, db_id)
--- 			VALUES (v_object.id,
--- 				v_object.version, 
--- 				v_object.user_id, 
--- 				v_object.tstamp, 
--- 				v_object.changeset_id, 
--- 				v_object.tags,
--- 				otg_get_max_id('osm_data.nodes', 'db_id') + 1);
--- 		END IF;
--- END LOOP;
--- 
--- 	
--- END; 
--- $$
--- LANGUAGE plpgsql;
-
-
 
 	-- NUMBER_OF_PART_CHAR
 
@@ -154,36 +96,6 @@ IF otg_isreal(v_volt_text) THEN
 RETURN v_volt_real;
 END;
 $$ LANGUAGE plpgsql;	
-
-
-	-- GET_REAL_ARRAY_FROM_SEMIC_STRING
-
--- Bekommt Semicolon-String als Input und Returnt diesen als Real-Array
--- Returnt NULL, wenn String ist NULL oder leer ('')
-
-
-CREATE OR REPLACE FUNCTION otg_get_real_array_from_semic_string (v_semic TEXT) RETURNS REAL []
-AS $$
-DECLARE
-	v_array REAL [];
-BEGIN
-	
-	IF NOT v_semic IS NULL AND NOT v_semic = '' THEN
-	
-		FOR i IN 1..(otg_numb_of_cert_char (v_semic, ';') + 1) 
-		LOOP
-			v_array [i] := otg_get_real_from_semic_string (v_semic, i);
-		END LOOP;
-		RETURN v_array;
-	ELSE
-		RETURN NULL; 
-	END IF;
-
-
-
-
-END;
-$$ LANGUAGE plpgsql;
 
 
 	-- GET_INT_FROM_WIRES_STRING
@@ -357,17 +269,6 @@ BEGIN
 						WHERE id = v_line.id;
 				END LOOP;
 
-			-- Dieser Teil kann so nicht verwendet werden, da Frequency (ähnlich Wires) nur eine Auflistung der auf der...
-			-- ...Freileitung vorhandenen Frequenzen darstellt. 
-			-- Bei mehreren Einträgen könne diese nur verhältnismäßig aufwendig zugeordnet werden
-				
-			-- Falls die Informationen wirklich konsisten sind (Anzahl Spannungsebenen, Cables Einträge und Frequenzen)
-			-- WHEN 	-- otg_numb_of_cert_char (v_line.voltage, ';') = otg_numb_of_cert_char (v_line.cables, ';') AND
--- 				otg_numb_of_cert_char (v_line.voltage, ';') = otg_numb_of_cert_char (v_line.frequency, ';') AND
--- 				NOT otg_isreal(v_line.frequency) THEN
--- 
--- 				UPDATE power_line SET frequency_array = otg_get_real_array_from_semic_string (v_line.frequency)
--- 					WHERE id = v_line.id;
 			ELSE END CASE;
 	END LOOP;
 	
@@ -1147,8 +1048,6 @@ END
 $$
 LANGUAGE plpgsql;
 
-
-
 -- TOPOLOGIE-BERECHNUNG
 
 	-- CREATE_GRID_TOPOLOGY
@@ -1207,7 +1106,7 @@ LOOP
 
 	-- pgr_createTopology should not be used.
 	PERFORM pgr_createTopology (	'branch_data_topo', --source und target werden immer wieder auf NULL gesetzt und Topologie neu berechnet.
-					0.0005, -- Is this a good buffer?
+					0.0001, -- Is this a good buffer? 0.0005 was not good, some lines have been deleted which should not have been.
 					'way', 
 					'line_id');
 			
@@ -1358,7 +1257,7 @@ BEGIN
 		END IF;
 
 		-- Falls v_lev mehr als einen Eintrag hat werden die Einträge neu geordnet...
-		--... und zwar so, dass in v_freq auftrtende Level zuerst im Array stehen.
+		--... und zwar so, dass in v_freq auftretende Level zuerst im Array stehen.
 		-- Dadurch werden zunächst die am besten passenden Levels ausgewählt
 		IF array_length (v_lev, 1) > 1 
 			THEN v_lev := otg_array_reorder_by_match (v_lev, v_freq); END IF;
@@ -1403,61 +1302,6 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql;
-
-
-	-- otg_connect_dead_ends_to_cont_lines
-
--- This function connects dead ends that are close to a transmission line...
--- to one of the transmission line vertices. 
--- Until now this is quick and dirty and needs to be improved.	
-
--- This function is now disabled, because the connection will be covered by the new
--- transfer-bus connection algorithm.
--- Can later be activated after improving this algorithm
-
--- CREATE OR REPLACE FUNCTION otg_connect_dead_ends_to_cont_lines () RETURNS void
--- AS $$
--- DECLARE
--- v_bus RECORD;
--- v_hit_line RECORD;
--- v_max_line_id BIGINT;
--- v_associated_line BIGINT;
--- BEGIN
--- v_max_line_id := (SELECT max(line_id) FROM power_line_sep);
--- FOR v_bus IN	
--- 	SELECT id, the_geom, voltage, frequency 
--- 		FROM bus_data WHERE 	origin = 'lin' AND
--- 					cntr_id = 'DE' AND
--- 					substation_id IS NULL AND
--- 					cnt = 1 AND 
--- 					voltage = 110000 -- unitl now only for 110kV
--- LOOP
--- 
--- 	-- Hit another line with this bus + buffer
--- 	SELECT f_bus, t_bus 
--- 				INTO v_hit_line 
--- 				FROM power_line_sep 
--- 				WHERE 	NOT f_bus = v_bus.id AND
--- 					NOT t_bus = v_bus.id AND -- Must not find itself
--- 					voltage = v_bus.voltage AND
--- 					frequency = v_bus.frequency AND
--- 					ST_intersects(way, ST_Buffer(v_bus.the_geom, 0.0005)) -- Same buffer as in CreateTopology
--- 					LIMIT 1; -- Include ORDER BY!!
--- 
--- 	CONTINUE WHEN v_hit_line IS NULL;
--- 
--- 	-- transmission lines with dead ends get... 
--- 	-- a new connection (with one of hit_line's bus)
--- 	-- This should be improved (distances, choice of bus etc....)
--- 	UPDATE power_line_sep SET f_bus = v_hit_line.f_bus 
--- 				WHERE f_bus = v_bus.id;
--- 	UPDATE power_line_sep SET t_bus = v_hit_line.t_bus
--- 				WHERE t_bus = v_bus.id;
--- 				
--- END LOOP;	
--- END
--- $$
--- LANGUAGE plpgsql;
 
 
 	-- otg_cut_off_dead_ends_iteration
@@ -1606,7 +1450,7 @@ BEGIN
 		END IF;
 
 		-- Falls v_lev mehr als einen Eintrag hat werden die Einträge neu geordnet...
-		--... und zwar so, dass in v_freq auftrtende Level zuerst im Array stehen.
+		--... und zwar so, dass in v_freq auftretende Level zuerst im Array stehen.
 		-- Dadurch werden zunächst die am besten passenden Levels ausgewählt
 		IF array_length (v_lev, 1) > 1 
 			THEN v_lev := otg_array_reorder_by_match (v_lev, v_freq); END IF;
@@ -1711,61 +1555,6 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql;
-
-
-	-- CONNECT_TRANSFORMERS ()
-
--- to de done: set very little buffer around the_geom to find neighbouring / cutting substations. Set trafo between to different voltage levels as below. if bus has no substation_id set one that applies for the same geom/neighbour.
-
--- version for applying geom-focus
----- Erstellt innerhalb der Umspannwerke Tranformator-Leitungen, die die Substation-Knoten verbinden
---CREATE OR REPLACE FUNCTION otg_connect_transformers () RETURNS void
---AS $$
-
---DECLARE 
---v_substation RECORD;
---v_substation_a RECORD;
---v_buses INT [];
---v_numb_buses INT;
---i INT;
-
----- wieso wird bus_data und power_substation als Quelle herangezogen und diese miteinander verglichen?
----- die distanz zwischen zwei punkten muss ja auf dem gleichen Datensatz basieren, es darf aber nicht die gleiche miteinander in Verbindung gebracht werden, kann über id ausgeschlossen werden
---BEGIN
---FOR v_substation_a IN 
---	SELECT id, the_geom FROM power_substation 
---		WHERE id IN (SELECT substation_id FROM bus_data WHERE NOT substation_id IS NULL) -- Dadurch fallen die offenen Auslands-Enden raus (diese brauchen auch nicht betrachtet zu werden)
---	
---FOR v_substation IN 
---	SELECT id, the_geom FROM power_substation 
---		WHERE id IN (SELECT substation_id FROM bus_data WHERE NOT substation_id IS NULL) -- Dadurch fallen die offenen Auslands-Enden raus (diese brauchen auch nicht betrachtet zu werden)
-
---FOR i IN 1..v_substation
---	LOOP
---	v_buses := (SELECT ARRAY (SELECT id, the_geom FROM bus_data WHERE ST_Distance(v_substation.the_geom [i], v_substation_a.the_geom) < 1;));
---		
---	LOOP
---	-- v_buses ist Array mit den IDs der Knoten innerhalb eines Umspannwerks
---	-- Dieses wird nach Spannung geordnet, damit Spannungsebenen der Reihe nach verbunden werden.
---	v_numb_buses := array_length (v_buses, 1);
---	IF v_numb_buses > 1 THEN -- Also verschiedene, betrachtete Spannungsebenen im Umspannwerk ankommen
---		FOR i IN 1..(v_numb_buses - 1) 
---			LOOP
---				INSERT INTO branch_data (way, f_bus, t_bus, power)
---					VALUES ( ST_MakeLine (	(SELECT the_geom FROM bus_data WHERE id = v_buses [i]),
---								(SELECT the_geom FROM bus_data WHERE id = v_buses [i+1])),
---						v_buses[i],
---						v_buses[i+1],
---						'transformer');
---				
---			END LOOP; 
---		END IF;
---	END LOOP;
---END
---$$
---LANGUAGE plpgsql;
-
--- original:
 
 -- Erstellt innerhalb der Umspannwerke Tranformator-Leitungen, die die Substation-Knoten verbinden
 CREATE OR REPLACE FUNCTION otg_connect_transformers () RETURNS void
@@ -1959,10 +1748,6 @@ INSERT into this values (v_vertex);
 v_cnt := (SELECT count(*) FROM this);
 WHILE v_cnt>0
 LOOP
---David: zu viele creates und drops in transactions vermeiden, stattdessen tabelle recyceln
---	DROP TABLE IF EXISTS v_next;
---	CREATE TABLE v_next (
---		v_id bigint);
 	DELETE FROM v_next;
 	this_v_array:=ARRAY (SELECT v_id FROM this);
         FOR k in 1..v_cnt
@@ -1984,10 +1769,6 @@ LOOP
 			END LOOP;
 		END IF;
 	END LOOP;
---David: s.o.
---	DROP TABLE this;
---	CREATE TABLE this (
---		v_id bigint);
 	DELETE FROM this;
 	INSERT INTO this (SELECT * FROM v_next);
 	v_cnt := (SELECT count(*) FROM this);
@@ -1998,112 +1779,9 @@ END;
 $BODY$
 LANGUAGE plpgsql; 
 
--- -- original version:
---CREATE OR REPLACE FUNCTION otg_graph_dfs (v_vertex BIGINT) RETURNS void
---AS $$ 
---DECLARE 
---v_neighbours BIGINT [];
---v_array_length INT;
---BEGIN
---UPDATE bus_data SET discovered = true WHERE id = v_vertex;
-
----- Alle vorhandenen Nachbarknoten werden im Array gespeichert
---v_neighbours := ARRAY (SELECT t_bus FROM branch_data WHERE f_bus = v_vertex); 
---v_neighbours := v_neighbours || ARRAY (SELECT f_bus FROM branch_data WHERE t_bus = v_vertex);
-
---v_array_length := (SELECT array_length (v_neighbours, 1));
---FOR i IN 1..v_array_length
---	LOOP
---	IF (SELECT discovered FROM bus_data WHERE id = v_neighbours [i]) = false -- Also noch nicht discovered
---		THEN PERFORM otg_graph_dfs (v_neighbours [i]); 
---	END IF;
---	END LOOP;
---END; 
---$$
---LANGUAGE plpgsql;
-
----- new version of otg_graph_analysis()
---CREATE OR REPLACE FUNCTION otg_graph_dfs(v_vertex bigint)
---  RETURNS void AS
---$BODY$ 
---DECLARE 
---v_neighbours BIGINT [];
---v_array_length INT;
---v_cnt BIGINT;
---this_v_array BIGINT[];
---BEGIN
---UPDATE bus_data SET discovered = false;
---CREATE TABLE this (v_id bigint);
---CREATE TABLE v_next (v_id bigint);
---INSERT into this values (v_vertex);
---v_cnt := (SELECT count(*) FROM this);
---WHILE v_cnt>0
---LOOP
---	DROP TABLE IF EXISTS v_next;
---	CREATE TABLE v_next (
---		v_id bigint);
---	this_v_array:=ARRAY (SELECT v_id FROM this);
---        FOR k in 1..v_cnt
---	LOOP
---		UPDATE bus_data SET discovered = true WHERE id = this_v_array[k];
---		v_neighbours := ARRAY (SELECT t_bus FROM branch_data WHERE f_bus = this_v_array[k]); 
---		v_neighbours := v_neighbours || ARRAY (SELECT f_bus FROM branch_data WHERE t_bus = this_v_array[k]);
---		v_array_length := (SELECT array_length (v_neighbours, 1));
---		FOR i IN 1..v_array_length
---			LOOP 
---			IF (SELECT discovered FROM bus_data WHERE id = v_neighbours [i]) = false
---				THEN 
---				IF (SELECT count(*) from v_next WHERE v_id=v_neighbours[i])=0
---				THEN INSERT INTO v_next
---					VALUES (v_neighbours [i]);
---				END IF;
---			END IF;
---			END LOOP;
---	END LOOP;
---	DROP TABLE this;
---	CREATE TABLE this (
---		v_id bigint);
---	INSERT INTO this (SELECT * FROM v_next);
---	v_cnt := (SELECT count(*) FROM this);
---END LOOP;
---DROP TABLE this;
---DROP TABLE v_next;
---END;
---$$
---LANGUAGE plpgsql;
-
-
-	-- otg_graph_analysis ()
-
--- Checks if graph_dfs is selected true. Then deletes disconnected Graphs
-CREATE OR REPLACE FUNCTION otg_graph_analysis () RETURNS void
-AS $$ 
-BEGIN
-IF (SELECT val_bool 
-	FROM abstr_values
-	WHERE val_description = 'graph_dfs') -- Only if graph_dfs is selected True (Python Script)
-	THEN
--- Evtl. vorher untersuchen
--- Untersucht den Graph auf Zusammenhang (beginnt beim Slack-knoten)
-	UPDATE bus_data SET discovered = false;
-	PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
-	WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
-	LIMIT 1)); -- ggf. id direkt einfügen	
--- Es werden die Branches und Busses gelöscht, die zu abgetrennten Netzbereichen gehören.
--- Diese werde zur Zeit nicht ins Problem-Log aufgenommen
-	DELETE FROM branch_data WHERE 	f_bus IN (SELECT id FROM bus_data WHERE discovered = false) OR
-					t_bus IN (SELECT id FROM bus_data WHERE discovered = false);
-	DELETE FROM bus_data WHERE discovered = false;
-END IF;
-END
-$$
-LANGUAGE plpgsql;
 
 	-- -- otg_transfer_busses ()
 	
--- This is the new tranfer-bus function
--- The old one can be used for the subgrid connection...
-
 CREATE OR REPLACE FUNCTION otg_transfer_busses () RETURNS void
 AS $$ 
 DECLARE
@@ -2442,118 +2120,9 @@ $$
 LANGUAGE plpgsql;
 
  
--- otg_connect_subgrids ()
--- >>>Malte: This function like it is can later better be used to connect disconnected subgrids
---It takes the closest substation (unused transfer-bus to grid bus) and connects sequentially.
---This can easily be changed to be used for disconnected subgrids <<<
- 
--- Lukas:
--- This function connects subgrids not connected to the main grid via the closest substation of the main grid.
+-- subgrid function:
+-- It takes the closest substation (unused transfer-bus to grid bus) and connects sequentially.
 
---CREATE OR REPLACE FUNCTION otg_connect_subgrids () RETURNS void
---AS $$ 
---DECLARE
--- 
---v_cnt INT;
---v_smallest_dist FLOAT;
---v_this_dist FLOAT;
---v_subgrid_bus_id BIGINT;
---v_substation_id BIGINT;
--- 
---v_subgrid_bus_geom geometry (Point, 4326);
---v_substation_geom geometry (Point, 4326);
---v_substation_voltage INT;
--- 
---v_subgrid_bus RECORD;
---v_substation RECORD;
--- 
---v_max_branch_id BIGINT;
-
---BEGIN
---IF (SELECT val_bool 
---	FROM abstr_values
--- 	WHERE val_description = 'conn_subgraphs') -- Only if subgraphs is selected True (Python Script)
--- 	THEN 
--- 	
--- 	CREATE TABLE subgrids_connect AS -- New table for calculation of subgrids to connect 
---	SELECT * FROM bus_data
---		WHERE discovered=false; 
---	v_cnt := (SELECT count(*) FROM subgrids_connect);
---	
---	WHILE v_cnt > 0 LOOP 
---	        raise notice 'loop: to be connected: %',v_cnt;
---		v_smallest_dist := 100000; -- find closest substation of main grid; Initial buffer size in meters (=100km)...
--- 			FOR v_subgrid_bus IN
--- 				SELECT id, the_geom
--- 					FROM subgrids_connect
--- 			LOOP
--- 				FOR v_substation IN
--- 				SELECT id, voltage, the_geom
--- 					FROM bus_data
--- 					WHERE 	frequency = 50 AND
--- 						NOT substation_id IS NULL -- Only substations no grid busses (Muffen)
--- 						
--- 					ORDER BY voltage -- Will be connected with 110 preferred
--- 				LOOP
--- 				v_this_dist := ST_Distance(	v_subgrid_bus.the_geom, 
--- 								v_substation.the_geom);
--- 					IF (v_this_dist < v_smallest_dist)
--- 						THEN 
--- 						v_smallest_dist := v_this_dist;
--- 						v_subgrid_bus_id := v_subgrid_bus.id;
--- 						v_subgrid_bus_geom := v_subgrid_bus.the_geom;
--- 						v_substation_id := v_substation.id;
--- 						v_substation_voltage := v_substation.voltage;
--- 						v_substation_geom := v_substation.the_geom;
--- 					END IF;
--- 				
--- 				END LOOP;
--- 			END LOOP;
---  raise notice 'connecting %',v_subgrid_bus_id;
---		v_max_branch_id := (SELECT max(branch_id) FROM branch_data); -- connect subgrid-bus to main grid bus with new line
--- 			INSERT INTO branch_data (	branch_id, 
--- 							length,
--- 							f_bus,
--- 							t_bus,
--- 							voltage,
--- 							cables,
--- 							frequency,
--- 							power,
--- 							multiline,
---							connected_via) -- add an additional column here to mark how the branch was connected (0,1,2,3)
--- 				VALUES(	v_max_branch_id + 1,
--- 					v_smallest_dist,
--- 					v_subgrid_bus_id,
--- 					v_substation_id,
--- 					v_substation_voltage,
--- 					3,
--- 					50,
---					'cable',
--- 					ST_Multi(ST_MakeLine(	v_subgrid_bus_geom,
--- 								v_substation_geom)),
---					2); -- 2 stands for connection of a subgrid to the main grid.
---		
---		PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
---			WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
---			LIMIT 1));		
---		DROP TABLE subgrids_connect;
---		CREATE TABLE subgrids_connect AS 
---			SELECT * FROM bus_data
---			WHERE discovered=false; 
---		v_cnt := (SELECT count(*) FROM subgrids_connect);
---	END LOOP;
----- 4. drop working table
---DROP TABLE subgrids_connect;
---END IF;
-
---UPDATE branch_data
---	SET power  
-
---END
---$$
---LANGUAGE plpgsql;
-
----- new subgrid function:
 CREATE OR REPLACE FUNCTION otg_connect_subgrids () RETURNS void
 AS $$ 
 DECLARE
@@ -2589,7 +2158,7 @@ IF (SELECT val_bool
 	SELECT * FROM bus_data
 		WHERE discovered=false; 
 	v_cnt := (SELECT count(*) FROM subgrids_connect);
-	
+
 	WHILE v_cnt > 0 LOOP 
 		raise notice 'subgrids to be connected: %',v_cnt;
 	 	v_smallest_dist := 100000; -- find closest substation of main grid; Initial buffer size in meters (=100km)...
@@ -2601,7 +2170,7 @@ IF (SELECT val_bool
  				SELECT id, voltage, the_geom
  					FROM bus_data
  					WHERE 	frequency = 50 AND 
-						--NOT substation_id IS NULL AND -- Only substations no grid busses (Muffen) -- DK: entfernt, weil zum Zeitpunkt der Ausführung des Skiptes diemeisten Muffen schon entfernt wurden.
+						NOT substation_id IS NULL AND -- Only substations no grid busses (Muffen) -- DK: entfernt, weil zum Zeitpunkt der Ausführung des Skiptes diemeisten Muffen schon entfernt wurden.
  						discovered = true AND
  						voltage = v_subgrid_bus.voltage
  					ORDER BY voltage -- Will be connected with 110 preferred
@@ -2666,6 +2235,7 @@ END IF;
 END
 $$
 LANGUAGE plpgsql;
+
 
 -- build function to buffer in meters around a geometry 
 -- source: http://www.gistutor.com/postgresqlpostgis/6-advanced-postgresqlpostgis-tutorials/58-postgis-buffer-latlong-and-other-projections-using-meters-units-custom-stbuffermeters-function.html
@@ -3071,254 +2641,6 @@ END; $$
 LANGUAGE plpgsql;
 
 
-
--- OTG_PLZ_SUBSTATION () 
-
--- Function to assign substations to plz
-CREATE OR REPLACE FUNCTION otg_plz_substation () RETURNS void
-AS $$
-
-DECLARE
-v_plz_area RECORD;
-v_numb_subst INT;
-v_total_plz_power NUMERIC;
-
-BEGIN
--- Creates new table for assignment of substations to plz
-DROP TABLE IF EXISTS plz_substation;
-CREATE TABLE plz_substation (
-	plz INT,
-	substation_id INT,
-	percentage NUMERIC,
-	distance NUMERIC
-	);
-
-
-FOR v_plz_area IN SELECT plz::INT as plz, geom FROM plz_poly
-LOOP
-	INSERT INTO plz_substation (plz, substation_id)
-		SELECT v_plz_area.plz, id
-				FROM power_substation
-				WHERE 	ST_Within(center_geom, v_plz_area.geom);
-
-	v_numb_subst := (SELECT count(*) FROM plz_substation WHERE plz = v_plz_area.plz);	
-			
-	IF v_numb_subst = 0
-	THEN 
-		INSERT INTO plz_substation (	plz, 
-						substation_id, 
-						distance)
-				SELECT 	v_plz_area.plz, 
-					id, 
-					ST_Distance(ST_Centroid(v_plz_area.geom), center_geom) as dist
-					FROM power_substation
-					ORDER BY dist ASC
-					LIMIT 1;
-		RAISE NOTICE 'remote added';							
-	END IF;
-
-	v_total_plz_power := (SELECT sum(s_long) 
-				FROM power_substation 
-				WHERE id = ANY (SELECT substation_id
-							FROM plz_substation
-							WHERE plz = v_plz_area.plz));
-
---David: Unfortunately there seem to be some (precisely 8 as of 2016-09-22) substations with s_long=0. Unfortunately one of these seems to be the only one in a certain plz area, causing division by zero. Therefore checking before calculation...			
-	IF v_total_plz_power > 0
-	THEN
-	UPDATE plz_substation 
-		SET percentage = (((SELECT s_long 
-					FROM power_substation
-					WHERE id = substation_id) / v_total_plz_power) * 100) 	
-		WHERE plz = v_plz_area.plz;
-	ELSE
-	UPDATE plz_substation 
-		SET percentage = 100 	
-		WHERE plz = v_plz_area.plz;
-	END IF;
-
-RAISE NOTICE 'done';
-END LOOP;
-
-END;
-$$ LANGUAGE plpgsql;
-
-
-
--- OTG_NUTS3_SUBSTATION () 
-
--- Function to assign substations to plz
-CREATE OR REPLACE FUNCTION otg_nuts3_substation () RETURNS void
-AS $$
-
-DECLARE
-v_nuts3_area RECORD;
-v_numb_subst INT;
-v_total_nuts3_power NUMERIC;
-
-BEGIN
--- Creates new table for assignment of substations to plz
-DROP TABLE IF EXISTS nuts3_substation;
-CREATE TABLE nuts3_substation (
-	nuts_id CHARACTER VARYING (14),
-	substation_id INT,
-	percentage NUMERIC,
-	distance NUMERIC
-	);
-
-
-FOR v_nuts3_area IN SELECT nuts_id, geom 
-			FROM nuts_poly
-			WHERE 	nuts_id ILIKE '%DE%' AND -- Only Germany
-				stat_levl_ = 3 -- Only Nuts3
-LOOP
-	INSERT INTO nuts3_substation (nuts_id, substation_id)
-		SELECT v_nuts3_area.nuts_id, id
-				FROM power_substation
-				WHERE 	ST_Within(center_geom, v_nuts3_area.geom);
-
-	v_numb_subst := (SELECT count(*) FROM nuts3_substation WHERE nuts_id = v_nuts3_area.nuts_id);	
-			
-	IF v_numb_subst = 0
-	THEN 
-		INSERT INTO nuts3_substation (	nuts_id, 
-						substation_id, 
-						distance)
-				SELECT 	v_nuts3_area.nuts_id, 
-					id, 
-					ST_Distance(ST_Centroid(v_nuts3_area.geom), center_geom) as dist
-					FROM power_substation
-					ORDER BY dist ASC
-					LIMIT 1;
-		RAISE NOTICE 'remote added';							
-	END IF;
-
-	v_total_nuts3_power := (SELECT sum(s_long) 
-				FROM power_substation 
-				WHERE id = ANY (SELECT substation_id
-							FROM nuts3_substation
-							WHERE nuts_id = v_nuts3_area.nuts_id));
-			
-	UPDATE nuts3_substation 
-		SET percentage = (((SELECT s_long 
-					FROM power_substation
-					WHERE id = substation_id) / v_total_nuts3_power) * 100) 	
-		WHERE nuts_id = v_nuts3_area.nuts_id;
-
-RAISE NOTICE 'done';
-END LOOP;
-
-END;
-$$ LANGUAGE plpgsql;
-
-
-
------------------------------------------------------------------------------
--- EDITIERUNG (ZUBAU)
------------------------------------------------------------------------------
-
-
--- SET_TIMESTAMP
-
--- Update der Metadata bei eingefügten / veränderten Objekten	
-CREATE OR REPLACE FUNCTION otg_set_timestamp_tg () RETURNS TRIGGER
-AS $$
-BEGIN
-	NEW.tstamp := now ();-- at time zone 'utc';
- 	
-RETURN NEW;
-END; $$
-LANGUAGE plpgsql;
-
-
--- SET_ID
-
--- Gibt Objekten beim (manuellen) Einfügen neue ID, falls noch keine vorhanden
-CREATE OR REPLACE FUNCTION otg_set_id_tg () RETURNS TRIGGER
-AS $$
-DECLARE
-v_min BIGINT;
-BEGIN
-	IF NEW.osm_id IS NULL THEN
-		SELECT min (change_log.osm_id) INTO v_min FROM change_log;
-		IF v_min < 0 THEN 
-			NEW.osm_id := v_min - 1; ELSE 
-			NEW.osm_id := -1; END IF;
-		END IF;
-		
-RETURN NEW;
-END; $$
-LANGUAGE plpgsql;
-
--- SET_ANWENDUNG ()
-
--- Bei jedem neuen Eintrag in change log wird durch diesen Trigger der aktuell ausgwählte Plan und das Jahr in 
--- anwendung änderung gespeichert.
-CREATE OR REPLACE FUNCTION otg_set_anwendung_tg () RETURNS TRIGGER
-AS $$
-DECLARE
-v_numb_plan_ids INT;
-v_numb_plan_intern_ids INT;
-v_zuordnung RECORD;
-BEGIN
-
--- aktuelle Zuordnung wird in Record gespeichert
-SELECT plan_id, jahr, plan_intern_id, description, user_comment INTO v_zuordnung FROM zuordnung;
--- Bestimmt die Anzahl IDs (der Pläne und Planintern)
-v_numb_plan_ids := otg_numb_of_cert_char(v_zuordnung.plan_id, ';') + 1;
-v_numb_plan_intern_ids := otg_numb_of_cert_char(v_zuordnung.plan_intern_id, ';') + 1;
-
-IF v_numb_plan_ids IS NULL OR v_numb_plan_intern_ids IS NULL
-	THEN RAISE EXCEPTION 'IDs wurden falsch eingegeben';
-END IF;
-
-IF NOT v_numb_plan_ids = v_numb_plan_ids
-	THEN RAISE EXCEPTION 'Die Anzahl Plan-IDs stimmt nicht mit der Anzahl Plan-interner IDs ueberein'; 
-END IF;
-
-FOR i IN 1..v_numb_plan_ids
-LOOP
-	INSERT INTO anwendung_aenderung (
-				aenderungs_id,
-				plan_id,
-				jahr,
-				plan_intern_id,
-				description,
-				user_comment)
-		VALUES (
-			NEW.id,
-			(SELECT (otg_get_int_from_semic_string(v_zuordnung.plan_id, i))),
-			v_zuordnung.jahr,
-			(SELECT (split_part(v_zuordnung.plan_intern_id,';',i))),
-			v_zuordnung.description,
-			v_zuordnung.user_comment); -- Plan_intern_id ist TEXT!!
-END LOOP;
-			
-RETURN NULL;
-END; $$
-LANGUAGE plpgsql;
-
-
--- PREVENT_DIRECT_INSERTS_TRIGGER
-
--- Verhinderung von direkten inserts in change_log
-CREATE OR REPLACE FUNCTION otg_prevent_direct_inserts_tg () RETURNS TRIGGER
-AS $$
-BEGIN
-	IF 	NEW.table_ident IS NULL OR 
-		NEW.action IS NULL 
-		THEN 
-			RAISE EXCEPTION 'No direct inserts into table "%"', TG_TABLE_NAME 
-				USING HINT = 'Use table power_ways to apply changes';
-			RETURN NULL;
-		ELSE RETURN NEW; 
-	END IF;
-END;
-$$
-LANGUAGE 'plpgsql';
-
-
-
 -- READ-ONLY TRIGGER
 
 -- Ermöglicht den Schreibschutz von Tabellen.
@@ -3573,49 +2895,6 @@ END; $$
 LANGUAGE plpgsql;
 
 
-		-- CHANGE-LOG EDIT Direct DELETE
-
--- Wird im vw_change_log ein Eintrag gelöscht, so wird dieser auch aus change_log gelöscht
-CREATE OR REPLACE FUNCTION otg_vw_change_log_edit_delete_tg () RETURNS TRIGGER
-AS $$
-DECLARE
-BEGIN
-	DELETE FROM change_log 
-		WHERE id = OLD.id;
-RETURN NULL;	
-END; $$
-LANGUAGE plpgsql;
-
-		-- CHANGE-LOG EDIT DIRECT UPDATE
-
--- Wird im vw_change_log ein Eintrag (direkt) geupdated, so wird dieser auch in change_log geupdated
-CREATE OR REPLACE FUNCTION otg_vw_change_log_edit_update_tg () RETURNS TRIGGER
-AS $$
-DECLARE
-BEGIN
-	-- Nur einige, bestimmte Werte können geändert werden.
-	UPDATE change_log
-		SET 	members = NEW.members,
-			power = NEW.power,
-			voltage = NEW.voltage,
-			cables = NEW.cables,
-			wires = NEW.wires,
-			circuits = NEW.circuits,
-			frequency = NEW.frequency,
-			hinweis = NEW.hinweis
-		WHERE id = NEW.id;
-			
-RETURN NULL;	
-END; $$
-LANGUAGE plpgsql;
-
-
-
-
-------------------------------------------------------------------------------------------------
--- UPDATE
--- (Funktionen für Anwendung von OSM-Updates)
-------------------------------------------------------------------------------------------------
 
 	-- CREATE_POWER_TABLES
 
@@ -3750,10 +3029,6 @@ BEGIN
 		FOR EACH STATEMENT
 		EXECUTE PROCEDURE otg_readonly_tg ();
 
--- Trigger
-	
-	-- edit_power_ways Trigger 
-	-- (zum Einfügen, Updaten und Löschen von Leitungen)
 
 -- Trigger returnen NULL und verhindern dadurch, dass Änderungen an der tatsächlichen Tabelle power_ways durchgeführt werden
 CREATE TRIGGER power_ways_update
@@ -3797,203 +3072,10 @@ $$
 LANGUAGE plpgsql;
 
 
-	-- APPLY_CHANGES()
-
--- Wendet die Änderungen auf die Tabelle power_ways an. (Wird bei jedem CREATE OR REPLACE von power_ways durchgeführt!
-CREATE OR REPLACE FUNCTION otg_apply_changes(v_plan_ids TEXT, v_jahr INT) RETURNS void
-AS $$
-DECLARE 
-
-v_change RECORD;
-v_plan_ids_array INT[];
-v_numb_plan_ids INT; --Anzahl angegebener Pläne
-
-BEGIN
-
--- Erstellt neue Tabelle in der alle Datan nach Zubau vorliegen
-DROP TABLE IF EXISTS power_ways_applied_changes;
-CREATE TABLE power_ways_applied_changes AS SELECT * FROM power_ways;
-
-DROP TABLE IF EXISTS power_relations_applied_changes;
-CREATE TABLE power_relations_applied_changes AS SELECT * FROM power_relations;
-
--- Falls plan_id NULL oder 0 eingegeben wird, werden nur Tabellen kopiert, aber nicht bearbeitet
-IF v_plan_ids = '0' OR v_plan_ids IS NULL 
-	THEN RETURN; END IF;
-
--- TEXT Datentyp v_plan_ids wird ausgewertet und in Array umgewandelt
-v_numb_plan_ids := otg_numb_of_cert_char(v_plan_ids, ';') + 1;
-FOR i IN 1..v_numb_plan_ids
-LOOP
-	v_plan_ids_array [i] := (SELECT (otg_get_int_from_semic_string(v_plan_ids, i)));
-	IF NOT v_plan_ids_array [i] IN (SELECT id FROM entwicklungsplan) 
-		THEN RAISE EXCEPTION 'Plan ID % not in Plan-Table!', v_plan_ids_array [i]; END IF;
-END LOOP;
-
--- Schleift durch alle Zeilen des change_log, die in anwendung_aenderung
--- (unter v_plan_id) aufgeführt sind und deren Anwendungsdatum vor dem in vJahre angegebenen Jahr liegt)
-FOR v_change IN
-	SELECT 	DISTINCT ON (change_log.id) osm_id, change_log.tstamp, table_ident, action,
-		members, way, power, voltage, cables, wires, circuits, frequency, 
-		hinweis, plan_id, jahr 
-		
-		FROM change_log, anwendung_aenderung
-		WHERE change_log.id = aenderungs_id AND
-			plan_id = ANY (v_plan_ids_array) AND
-			jahr <= v_jahr
-	ORDER BY change_log.id ASC, tstamp ASC
-
-	LOOP
-
-	-- Falls die Change-Zeile ein Way ist:
-	CASE 
-		WHEN v_change.action = 'isrt' AND v_change.table_ident = 'way'-- hat negative ID und kann in power_ways nicht auftauchen (es muss also kein Abgleich gemacht werden)
-		THEN 
-
-		INSERT INTO power_ways_applied_changes (	id,
-								tstamp,
-								changeset_id,
-								way,
-								power,
-								voltage,
-								cables,
-								wires,
-								circuits,
-								frequency)
-			VALUES(	v_change.osm_id,
-				v_change.tstamp,
-				-1,
-				ST_LineMerge(v_change.way),
-				v_change.power,
-				v_change.voltage,
-				v_change.cables,
-				v_change.wires,
-				v_change.circuits,
-				v_change.frequency);
-
-		-- Wenn eine Leitung nach Plan gelöscht werden soll
-		WHEN v_change.action = 'dlt' AND v_change.table_ident = 'way'
-		THEN 
-		-- Wenn die osm_id aus dem Change_log nicht in power_ways vorhanden ist wird ein Fehler gemeldet.
-		-- In diesem Fall ist die Leitung in OSM evtl. gelöscht worden. Zubau muss dann neu angepasst werden.
-			IF NOT v_change.osm_id IN (SELECT id FROM power_ways_applied_changes) THEN
-				RAISE EXCEPTION 'ID % nicht in power_ways zu finden. ', v_change.osm_id
-					USING HINT = 'Möglicherweise wurde Leitung in OSM ersetzt'; END IF;
-
-			DELETE FROM power_ways_applied_changes WHERE id = v_change.osm_id; 
-
-		-- Wenn eine Leitung geupdatet werden soll
-		WHEN v_change.action = 'updt' AND v_change.table_ident = 'way'
-		THEN 
-			IF NOT v_change.osm_id IN (SELECT id FROM power_ways_applied_changes) THEN
-				RAISE EXCEPTION 'ID % nicht in power_ways zu finden. ', v_change.osm_id
-					USING HINT = 'Möglicherweise wurde Leitung in OSM ersetzt'; END IF;
-
-			UPDATE power_ways_applied_changes
-				SET 	
-					tstamp = v_change.tstamp,
-					changeset_id = -1,
-					version = NULL,
-					user_id = NULL,
-					way = ST_LineMerge(v_change.way),
-					power = v_change.power,
-					voltage = v_change.voltage,
-					cables = v_change.cables,
-					wires = v_change.wires,
-					circuits = v_change.circuits,
-					frequency = v_change.frequency
-				WHERE power_ways_applied_changes.id = v_change.osm_id; 
-
-
-		WHEN v_change.action = 'isrt' AND v_change.table_ident = 'rel'
-		THEN INSERT INTO power_relations_applied_changes (id,
-						tstamp,
-						changeset_id,
-						members,
-						voltage,
-						cables,
-						wires,
-						circuits,
-						frequency)
-			VALUES(	v_change.osm_id,
-				v_change.tstamp,
-				-1,
-				v_change.members,
-				v_change.voltage,
-				v_change.cables,
-				v_change.wires,
-				v_change.circuits,
-				v_change.frequency);
-				
-		WHEN v_change.action = 'dlt' AND v_change.table_ident = 'rel'
-			THEN
-			IF NOT v_change.osm_id IN (SELECT id FROM power_relations_applied_changes) THEN
-				RAISE EXCEPTION 'ID % nicht in power_ways zu finden. ', v_change.osm_id
-					USING HINT = 'Möglicherweise wurde Stromkreis in OSM ersetzt'; END IF;
-					
-			DELETE FROM power_relations_applied_changes WHERE id = v_change.osm_id; -- user-Delete geht also unabhängig vom Timestamp immer vor!
-
-		WHEN v_change.action = 'updt' AND v_change.table_ident = 'rel'
-		THEN 
-
-			IF NOT v_change.osm_id IN (SELECT id FROM power_relations_applied_changes) THEN
-				RAISE EXCEPTION 'ID % nicht in power_ways zu finden. ', v_change.osm_id
-					USING HINT = 'Möglicherweise wurde Stromkreis in OSM ersetzt'; END IF;
-					
-		
-			UPDATE power_relations_applied_changes
-				SET 	version = NULL,
-					user_id = NULL,
-					tstamp = v_change.tstamp,
-					changeset_id = -1,
-					members = v_change.members,
-					voltage = v_change.voltage,
-					cables = v_change.cables,
-					wires = v_change.wires,
-					circuits = v_change.circuits,
-					frequency = v_change.frequency
-				WHERE power_relations_applied_changes.id = v_change.osm_id; 
-		
-	END CASE;
-	END LOOP;
-END; 
-$$
-LANGUAGE plpgsql;
-
-
-
-	-- OTG_ZUORDUNG_AS_ARRAY () 
-	-- Returnt aus den Plänen des Zubaus (TEXT) ein Integer-Array
-	
-CREATE OR REPLACE FUNCTION otg_zuordung_as_array (v_plan_ids TEXT) RETURNS INT[]
-AS $$
-
-DECLARE
-v_numb_plan_ids INT;
-v_plans INT [];
-
-BEGIN
--- NULL output with NULL input
-IF v_plan_ids IS NULL
-	THEN RETURN NULL;
-END IF;
-
--- Bestimmt die Anzahl IDs (der Pläne und Planintern)
-v_numb_plan_ids := otg_numb_of_cert_char(v_plan_ids, ';') + 1;
-
-FOR i IN 1..v_numb_plan_ids
-LOOP
-	v_plans[i] := (SELECT (otg_get_int_from_semic_string(v_plan_ids, i)));
-END LOOP;
-RETURN v_plans;
-END; 
-$$
-LANGUAGE plpgsql;
-
 		-- OTG_SAVE_RESULTS () 
 		-- Saves results and deletes tables
 
-CREATE OR REPLACE FUNCTION otg_save_results (v_plans TEXT, v_year INT, v_comment TEXT) RETURNS void 
+CREATE OR REPLACE FUNCTION otg_save_results () RETURNS void 
 AS $$
 DECLARE
 
@@ -4010,8 +3092,8 @@ v_new_id := (SELECT max(id) + 1 FROM results.results_metadata);
 IF v_new_id IS NULL 
 	THEN v_new_id := 1; END IF;
 
-INSERT INTO results.results_metadata(id, osm_date, abstraction_date, applied_plans, applied_year, user_comment) 
-	VALUES (v_new_id, v_downloaded, v_abstracted, v_plans, v_year, v_comment);
+INSERT INTO results.results_metadata(id, osm_date, abstraction_date) 
+	VALUES (v_new_id, v_downloaded, v_abstracted);
 
 
 INSERT INTO results.bus_data (
@@ -4144,85 +3226,6 @@ INSERT INTO results.dcline_data(
 
 				FROM dcline_data;
 
---DROP TABLE bus_data;
---DROP TABLE branch_data; 
---DROP TABLE dcline_data;  
-
-INSERT INTO results.nuts3_subst (
-	result_id,
-	nuts_id,
-	substation_id,
-	percentage,
-	distance)
-	
-	SELECT	v_new_id,
-		nuts_id,
-		substation_id,
-		percentage,
-		distance
-		FROM nuts3_substation;
-DROP TABLE nuts3_substation;  
-
-
-INSERT INTO results.plz_subst (
-	result_id,
-	plz,
-	substation_id,
-	percentage,
-	distance)
-	
-	SELECT	v_new_id,
-		plz,
-		substation_id,
-		percentage,
-		distance
-		FROM plz_substation;
-DROP TABLE plz_substation;  
-	
-INSERT INTO results.substations(
-	result_id ,
-	osm_id,
-	voltage,
-	s_long,
-	name,
-	geom,
-	center_geom)
-
-	SELECT 	v_new_id,
-		id,
-		voltage,
-		s_long,
-		name,
-		poly,
-		center_geom
-			FROM power_substation;
-DROP TABLE power_substation;  
-
-
-INSERT INTO results.problem_log(
-	result_id,
-	object_type, -- Objekt-Typ des dargestellten Elements
-	line_id, -- Alle im Objekt enthaltenen lines (ways)
-	relation_id, -- Relation_id des Objekts (0 für Branches, die aus ways stammen)
-	way, 
-	voltage,
-	cables,
-	wires, 
-	frequency,
-	problem ) -- Beschreibung des entsprechenden Problems
-
-	SELECT v_new_id,
-		object_type,
-		line_id,
-		relation_id,
-		way,
-		voltage,
-		cables,
-		wires,
-		frequency,
-		problem
-			FROM problem_log;
-DROP TABLE problem_log;         
 END;
 $$
 LANGUAGE plpgsql;
@@ -4334,7 +3337,7 @@ LANGUAGE plpgsql;
 
 --function otg_connect_busses_to_lines_1:
 --identifies buses, that should be connected to lines and breaks lines in the corresponding points
---by inserting new buses and re-redining the lines. Iterative procedure, which might take some minutes to run since
+--by inserting new buses and re-redifining the lines. Iterative procedure, which might take some minutes to run since
 --only one point per individual line is processed per iteration
 --speed could be improved by processing the elements of branch_data_new_busses 
 --in the order of ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) while updating line_ids in branch_data_new_busses

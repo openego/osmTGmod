@@ -1,7 +1,7 @@
 /*
 build_up_db -
 script to set up db structure of osmTGmod.
-__copyright__ 	= "NEXT ENERGY"
+__copyright__ 	= "DLR Institute of Networked Energy Systems"
 __license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
 __url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
 __author__ 	= "lukasol"
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS results.bus_data(
                 bus_area INTEGER,   --area number (positive integer)
                 vm NUMERIC,               --voltage magnitude (p.u.)
                 va NUMERIC,               --voltage angle (degrees)
-                base_kv NUMERIC,   --base voltage (kV) (des jeweiligen Knotens (hieruber wird auch Trafoubersetzung bestimmt))
+                base_kv NUMERIC,   --base voltage (kV) (of the respective node (transformer settings are defined by this))
                 zone INTEGER,           --loss zone (positive integer)
                 vmax NUMERIC,           --maximum voltage magnitude (p.u.) (optional)
                 vmin NUMERIC,           --minimum voltage magnitude (p.u.) (optional)
@@ -68,10 +68,7 @@ ALTER TABLE results.bus_data DROP CONSTRAINT IF EXISTS result_fk;
 ALTER TABLE results.bus_data
 	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
 
-CREATE OR REPLACE VIEW results.view_bus_data AS 
-	SELECT * FROM results.bus_data 
-	WHERE result_id = (SELECT result_id FROM results.view_results);
-                       
+                     
 CREATE TABLE IF NOT EXISTS results.branch_data(
 
 		result_id INT,
@@ -107,10 +104,7 @@ ALTER TABLE results.branch_data DROP CONSTRAINT IF EXISTS result_fk;
 ALTER TABLE results.branch_data 
 	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
 
-CREATE OR REPLACE VIEW results.view_branch_data AS 
-	SELECT * FROM results.branch_data 
-	WHERE result_id = (SELECT result_id FROM results.view_results);
-		
+	
 CREATE TABLE IF NOT EXISTS results.dcline_data (
 
 		result_id INT,

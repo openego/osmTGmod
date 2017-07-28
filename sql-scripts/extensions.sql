@@ -1,7 +1,7 @@
 /*
 extensions -
 script to load all extensions applied in osmTGmod and load osm raw data into database.
-__copyright__ 	= "NEXT ENERGY"
+__copyright__ 	= "DLR Institute of Networked Energy Systems"
 __license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
 __url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
 __author__ 	= "lukasol"

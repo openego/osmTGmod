@@ -1,29 +1,29 @@
-﻿-----------------------------------------------------------------------------------
---
---  Copyright for proportions of the code by "Wuppertal Institut" (2015) ads part of the project openTGmod                                         
---
---  Licensed under the Apache License, Version 2.0 (the "License")
---  you may not use this file except in compliance with the License.
---  You may obtain a copy of the License at
---
---      http://www.apache.org/licenses/LICENSE-2.0
---
---  Unless required by applicable law or agreed to in writing, software
---  distributed under the License is distributed on an "AS IS" BASIS,
---  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
---  See the License for the specific language governing permissions and
---  limitations under the License.
---
------------------------------------------------------------------------------------
+/*
+power_script -
+central script of osmTGmod to abstract power grid data.
+__copyright__ 	= "DLR Institute of Networked Energy Systems"
+__license__ 	= "GNU Affero General Public License Version 3 (AGPL-3.0)"
+__url__ 	= "https://github.com/openego/osmTGmod/blob/master/LICENSE"
+__author__ 	= "lukasol"
+Contains: Proportions of the code by "Wuppertal Institut" (2015)                                          
+                                                                             
+--  Licensed under the Apache License, Version 2.0 (the "License")               
+--  you may not use this file except in compliance with the License.              
+--  You may obtain a copy of the License at                                       
+--                                                                                
+--      http://www.apache.org/licenses/LICENSE-2.0                                
+--                                                                                
+--  Unless required by applicable law or agreed to in writing, software           
+--  distributed under the License is distributed on an "AS IS" BASIS,             
+--  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.      
+--  See the License for the specific language governing permissions and           
+--  limitations under the License. 
+*/
 
-------------------------------------------------------------------------------------------------
--- POWER OSM DATENUMWANDLUNG
-------------------------------------------------------------------------------------------------
+-- Convention:
+-- All values are in SI units if not stated within the name of the variable.
 
--- Konvention:
--- Alle Werte von Variablen sind in üblichen S.I. Einheiten, falls im Variablenname keine (abweichende) Einheit angegeben ist.
-
--- DROP TABELLEN
+-- DROP TABLES
 
 DROP TABLE IF EXISTS power_circ_members;
 DROP TABLE IF EXISTS power_circuits;
@@ -39,20 +39,14 @@ DROP TABLE IF EXISTS dcline_data;
 
 DROP TABLE IF EXISTS problem_log;
 
--- This table can optionally be used for debugging
-CREATE TABLE IF NOT EXISTS debug_vals (explanation TEXT, value TEXT);
-DELETE FROM debug_vals;
---Example usage:
---INSERT INTO debug_vals VALUES ('Explanation', 'whatever_value'::TEXT);
+
+-- CREATION OF COMMON TABLES 
 
 
--- ERSTELLUNG ALLGEMEINER TABELLEN (DEKLARIERUNG EINIGER VARIABLEN)
+-- CREATION OF TOPOLOGY TABLES
+-- (will be filled with power grid topologies)
 
-
-	-- ERSTELLEN DER TOPOLOGIE-TABELLEN
-	-- (Diese werden später mit der topologischen Netzstruktur gefüllt)
-
-		-- BUS_DATA	
+-- BUS_DATA	
 
 CREATE TABLE bus_data (	
 	id BIGINT PRIMARY KEY,
@@ -67,7 +61,7 @@ CREATE TABLE bus_data (
 CREATE INDEX bus_id_idx ON bus_data(id);
 CREATE INDEX bus_the_geom_idx ON bus_data(the_geom);
 
-		-- BRANCH_DATA
+-- BRANCH_DATA
 
 CREATE TABLE branch_data (	
 	branch_id serial NOT NULL PRIMARY KEY,
@@ -89,12 +83,12 @@ CREATE INDEX branch_f_bus_idx ON branch_data (f_bus);
 CREATE INDEX branch_t_bus_idx ON branch_data (t_bus);
 
 
-	-- ERSTELLEN DER PROBLEM_LOG-TABELLE UND COUNT-LOG
-	-- (in diese Tabelle werden alle Probleme eingetragen, die explizit über Trigger oder Inserts in diese Tabelle eingefügt werden)
+-- CREATION OF PROBLEM_LOG TABLE AND COUNT-LOG
+-- (problems that are explicitely inserted via triggers or inserts are collected in this table)
 	
-CREATE TABLE problem_log (	object_type TEXT, -- Objekt-Typ des dargestellten Elements
-				line_id BIGINT [], -- Alle im Objekt enthaltenen lines (ways)
-				relation_id BIGINT, -- Relation_id des Objekts (0 für Branches, die aus ways stammen)
+CREATE TABLE problem_log (	object_type TEXT, -- Object-Type of the element
+				line_id BIGINT [], -- All lines within the object (ways)
+				relation_id BIGINT, -- Relation_id of the object (0 for branches from ways)
 				way geometry (MultiLineString, 4326), 
 				voltage INT,
 				cables INT,
@@ -109,7 +103,7 @@ CREATE TABLE problem_log (	object_type TEXT, -- Objekt-Typ des dargestellten Ele
 	-- (Diese Tabelle wird die way-Informationen über Leitungen (Freileitungen und Kabel) enthalten)
 SELECT *
 	INTO power_line
-	FROM power_ways_applied_changes
+	FROM power_ways
 	WHERE 	power = 'line' OR
 		power = 'cable';
 
@@ -123,7 +117,7 @@ CREATE INDEX power_line_way_gix ON power_line USING GIST (way);
 
 SELECT *
 	INTO power_substation
-	FROM power_ways_applied_changes
+	FROM power_ways
 	WHERE 	power = ANY (ARRAY ['substation','sub_station','station']); 
 
 -- Erstellt einen normalen Index auf ID
@@ -144,7 +138,6 @@ ALTER TABLE power_substation DROP COLUMN way;
 
 -- Macht einen spatial Index auf Geometriespalte poly
 CREATE INDEX substation_poly_gix ON power_substation USING GIST (poly);
-
 
 	-- GEOMETRIE POWER_LINE
 	-- (Zunächst handelt es sich lediglich um geometrische Informationen - keine Topologie)
@@ -214,19 +207,6 @@ UPDATE power_line
 
 	-- ASSUMPTION
 	-- It is assumed that all 60kV voltages can be considered 110kV
---UPDATE power_line
---	SET
---	voltage_array [1] = 110000 WHERE voltage_array[1] = 60000;
---UPDATE power_line
---	SET
---	voltage_array [2] = 110000 WHERE voltage_array[2] = 60000;
---UPDATE power_line
---	SET
---	voltage_array [3] = 110000 WHERE voltage_array[3] = 60000;
---UPDATE power_line
---	SET
---	voltage_array [4] = 110000 WHERE voltage_array[4] = 60000;
-----
 UPDATE power_line
 	SET
 	voltage_array [1] = 110000 WHERE voltage_array[1] >= 60000 AND voltage_array[1] <= 165000;
@@ -321,8 +301,6 @@ ALTER TABLE power_line ADD COLUMN frequency_array REAL [4];
 -- ... daher: Alle weiteren Informationen müssen von Relations kommen
 SELECT otg_read_frequency ();
 
-
-
 	-- UNTERSUCHUNG CIRCUITS
 	-- (In der Tabelle power_line enthaltene Stromkreis-Informationen)
 	-- (Diese Beschränken sich idR. auf Erdkabel, da bei diesen die Anzahl "Leiterseile" für OSM-Mapper in diesem Fall nicht zu ermitteln ist)
@@ -336,7 +314,6 @@ SELECT otg_read_frequency ();
 -- Die Stromkreise werden kann nicht von den Cables, sondern der Anzahl Stromkreise abgezogen werden.
 
 SELECT otg_read_circuits ();
-
 
 	-- UNTERSUCHUNG LEITUNGSLÄNGE
 
@@ -404,7 +381,7 @@ SELECT otg_110kv_cables ();
 	
 SELECT*
 	INTO power_circuits
-	FROM power_relations_applied_changes; 
+	FROM power_relations; 
 	
 ALTER TABLE power_circuits
 	ADD CONSTRAINT circuit_id_pk primary key (id); 
@@ -459,8 +436,6 @@ ALTER TABLE power_circuits DROP COLUMN cables_text;
 ALTER TABLE power_circuits DROP COLUMN wires_text;
 ALTER TABLE power_circuits DROP COLUMN circuits_text;
 ALTER TABLE power_circuits DROP COLUMN frequency_text;
-
-
 
 	-- INFORMATIONSÜBERGABE POWER_LINE -> power_circ_members
 	-- (Ebenfalls um die Prozessierung zu erleichtern, werden den power_circ_members weitere Informationen übergeben)
@@ -681,8 +656,7 @@ SELECT otg_set_count ('power_circ_members', 'rel');
 		FOR EACH ROW 
 		EXECUTE PROCEDURE otg_power_circuits_problem_tg ('branch_off_(cables_>_3)');
 		-- Die in das Log eingetragenen Werte für z.B. cables sind die aus der Datenbanke erhaltenen Werte (und nicht die über Annahmen veränderten)
-		-- auch bei cables = 3 führt branch off oft zu fehlern!!!!
-	DELETE FROM power_circuits 
+		DELETE FROM power_circuits 
 		WHERE 	--cables > 3 AND 
 			id IN (SELECT relation_id FROM power_circ_members 
 			WHERE 	f_bus IN (SELECT id FROM bus_data WHERE cnt > 2 AND origin = 'rel') OR
@@ -698,7 +672,6 @@ ALTER TABLE bus_data ADD COLUMN cntr_id character varying (2);
 -- Macht allgemeine Knotenuntersuchung
 --(setzt Länderkennung, substation_id und Offene Enden im Ausland bekommen Substation_id = 0)
 SELECT otg_bus_analysis ('rel');
-
 
 -- Heuristik: Funktion otg_connect_dead_ends_with_substation () versucht offene Stromkreisendenin der Nähe von Umspannwerken über Puffer zu schließen
 SELECT otg_connect_dead_ends_with_substation();
@@ -736,7 +709,6 @@ DELETE FROM power_circ_members WHERE f_bus = t_bus;
 								substation_id IS NULL)));
 	DROP TRIGGER problem_log_trigger ON power_circuits;
 
-
 -- Anschließend werden alle Knoten gelöscht, an die aufgrund der Sromkreis-Löschung keine Leitungen mehr angeschlossen sind	
 SELECT otg_set_count ('power_circ_members', 'rel');
 DELETE FROM bus_data WHERE origin = 'rel' AND cnt = 0; 
@@ -759,7 +731,7 @@ SELECT otg_substract_circuits() ;
 SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = true AND origin = 'rel'; -- Also alle erfolgreichen Buffer
 
 
-	-- PROBLEM: CABLE CONFLICE
+	-- PROBLEM: CABLE CONFLICT
 	-- wieder nach oben packen!!!
 	-- Cable conflict sollte noch verbessert werden (und in Summenfehler und Nachabarschaftsfehler aufgeteilt werden)
 	-- (Ein Problem wird gemeldet, sobald Leitungs-Nachabarschafts-Informationen nicht konsistent sind)
@@ -905,8 +877,8 @@ SELECT otg_bus_analysis ('lin');
 
 --- DK: Hier werden auf Leitungen liegende Knoten mit den Leitungen verbunden, wenn die Spannungslevel passen
 --- (neue Funktion, die verhindern soll, dass nicht verbundene Leitungen und Knoten gelöscht werden)
-select otg_connect_busses_to_lines_1 ();
-select otg_connect_busses_to_lines_2 ();
+SELECT otg_connect_busses_to_lines_1 ();
+SELECT otg_connect_busses_to_lines_2 ();
 		
 -- Löscht iterativ Leitungen mit offenem End
 SELECT otg_cut_off_dead_ends_iteration ('power_line_sep', 'lin'); 
@@ -1041,7 +1013,7 @@ SELECT otg_simplify_branches_iteration ();
 
 		-- UMWANDLUNG DATENTYPEN
 		
-ALTER TABLE branch_data ADD COLUMN multiline geometry (MULTILINESTRING, 4326); --evtl. wieder auf MultiLineStirng festlegen
+ALTER TABLE branch_data ADD COLUMN multiline geometry (MULTILINESTRING, 4326); 
 UPDATE branch_data
 	SET multiline = ST_Multi(ST_union(ways));
 ALTER TABLE branch_data DROP column ways; 
@@ -1057,8 +1029,6 @@ SELECT otg_drop_buffers_matching_busses();
 
 -- Function to connect subgrids
 SELECT otg_connect_subgrids ();
--- Function to delete busses with same location and voltage
---SELECT otg_drop_buffers_matching_busses();
 
 -- Erweitert branch_data um einfache Topologische Geometrie
 ALTER TABLE branch_data ADD COLUMN simple_geom GEOMETRY (LINESTRING, 4326);
@@ -1179,11 +1149,6 @@ UPDATE power_substation SET s_long = (SELECT sum(s_long_sum) --sum instead of ma
 SELECT AddGeometryColumn('power_substation', 'center_geom', 4326, 'Point', 2);
 UPDATE power_substation SET center_geom = ST_Centroid(poly);
 
--- Executes functions to create assignment-tables for plz and nut3 to substations
-SELECT otg_plz_substation ();
-SELECT otg_nuts3_substation ();
-
-
 -- ZUSÄTZLICHE DATEN ZUR ÜBERGABE AN MATPOWER
 
 -- Die Werte bus_area und zone können für die Summierung der Einspeisung verwendet werden. Dies wird hier vernachlässigt
@@ -1210,3 +1175,6 @@ ALTER TABLE bus_data ADD COLUMN qd REAL;
 
 --delete branches which somehow (and for some reason) are not ok
 DELETE FROM branch_data WHERE t_bus IS NULL or f_bus IS NULL;
+-- update cables for branches with somehow different cables
+UPDATE branch_data SET cables = 6 WHERE cables = 4;
+UPDATE branch_data SET cables = 6 WHERE cables = 7;
