@@ -46,17 +46,17 @@ CREATE TABLE branch_specifications (	spec_id serial NOT NULL PRIMARY KEY,
 -- this convention is also applied by matpower					
 
 INSERT INTO branch_specifications 
-	VALUES (DEFAULT, 110, 'line', '2*265/35', 260, 34, 0.109, 1.2, 40, 9.5, 355);
+	VALUES (DEFAULT, 110, 'line', '2*265/35', 260, 34, 0.05475, 1.2, 40, 9.5, 355);
 INSERT INTO branch_specifications 
 	VALUES (DEFAULT, 110, 'cable', '1400', 280, 347, 0.0177, 0.3, 78, 250, 35);
 INSERT INTO branch_specifications 
-	VALUES (DEFAULT, 220, 'line', '2*265/35', 520, 136, 0.109, 1.0, 30, 11, 302);
+	VALUES (DEFAULT, 220, 'line', '2*265/35', 520, 136, 0.05475, 1.0, 30, 11, 302);
 INSERT INTO branch_specifications 
 	VALUES (DEFAULT, 220, 'cable', '1400', 550, 1250, 0.0176, 0.3, 67, 210, 39);
 INSERT INTO branch_specifications 
-	VALUES (DEFAULT, 380, 'line', '4*265/35', 1790, 600, 0.028, 0.8, 15, 14, 240);
+	VALUES (DEFAULT, 380, 'line', '4*265/35', 1790, 600, 0.027375, 0.8, 15, 14, 240);
 INSERT INTO branch_specifications 
-	VALUES (DEFAULT, 380, 'cable', '1400', 925, 3290, 0.0175, 0.3, 56, 180, 44);
+VALUES (DEFAULT, 380, 'cable', '1400', 925, 3290, 0.0175, 0.3, 56, 180, 44);
 
 
 -- DC-LINES
@@ -95,7 +95,7 @@ CREATE TABLE transformer_specifications (
 -- Springer: Elektrische Kraftwerke und Netze p. 228					
 
 INSERT INTO transformer_specifications 
-	VALUES (DEFAULT, 1000, 380000, 220000, 13.5); -- Springer: Elektrische Kraftwerke und Netze p. 228/219
+	VALUES (DEFAULT, 600, 380000, 220000, 13.5); -- Springer: Elektrische Kraftwerke und Netze p. 228/219
 INSERT INTO transformer_specifications 
 	VALUES (DEFAULT, 300, 380000, 110000, 14);
 INSERT INTO transformer_specifications 
