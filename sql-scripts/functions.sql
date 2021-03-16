@@ -1846,7 +1846,7 @@ IF (SELECT val_bool
 		v_cnt := (SELECT count(*) FROM transfer_busses_connect);
 		EXIT WHEN v_cnt = 0;
 		raise notice '%',v_cnt;
-		v_smallest_dist := 100000; -- Initial buffer size in meters (=100km)...
+		v_smallest_dist := 10000000; -- Initial buffer size in meters (=100km)...
 		--... within this buffer the first buffer will search for lines...
 		--... the buffer will then be lowered anytime a closer line is found.
 
@@ -2013,14 +2013,14 @@ IF (SELECT val_bool
 			-- The old branch needs to be split-up:
 
 			-- Geometry of the first part:
-			v_new_way_geom_start := ST_Line_Substring(	v_branch_way, 
+			v_new_way_geom_start := ST_LineSubstring(	v_branch_way, 
 									0, -- (from 0 to location of closest point)
 									v_closest_point_loc); 
 			-- Length of first part in meters.						
 			v_new_way_length_start := ST_length(v_new_way_geom_start::geography);
 
 			-- Geometry of the second part					
-			v_new_way_geom_end := ST_Line_Substring(	v_branch_way, 
+			v_new_way_geom_end := ST_LineSubstring(	v_branch_way, 
 									v_closest_point_loc, 
 									1); -- (from location of closest point to 100%)
 			-- Length of the second part in meters.
@@ -3340,7 +3340,7 @@ LANGUAGE plpgsql;
 --by inserting new buses and re-redifining the lines. Iterative procedure, which might take some minutes to run since
 --only one point per individual line is processed per iteration
 --speed could be improved by processing the elements of branch_data_new_busses 
---in the order of ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) while updating line_ids in branch_data_new_busses
+--in the order of ST_LineLocatePoint(ST_LineMerge(ln_geom), pt_geom) while updating line_ids in branch_data_new_busses
 --please be aware: this function only inserts new busses, the busses are not yet connected!!!
 --...inspired by otg_transfer_busses...
 CREATE OR REPLACE FUNCTION otg_connect_busses_to_lines_1 () RETURNS void
@@ -3379,7 +3379,7 @@ FROM
         ln.voltage=pt.voltage
     ORDER BY ln_id,pt_geom,pt_id
     ) as subquery
-WHERE ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom)>0 and ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) < 1
+WHERE ST_LineLocatePoint(ST_LineMerge(ln_geom), pt_geom)>0 and ST_LineLocatePoint(ST_LineMerge(ln_geom), pt_geom) < 1
 );
 
 --break lines at the respective points and insert new buses
@@ -3417,14 +3417,14 @@ FOR branch IN
 		-- The old branch needs to be split-up:
 
 		-- Geometry of the first part:
-		v_new_way_geom_start := ST_Line_Substring(branch_data.way, 
+		v_new_way_geom_start := ST_LineSubstring(branch_data.way, 
 									0, -- (from 0 to location of closest point)
 									v_closest_point_loc); 
 		-- Length of first part in meters.						
 		v_new_way_length_start := ST_length(v_new_way_geom_start::geography);
 
 		-- Geometry of the second part					
-		v_new_way_geom_end := ST_Line_Substring(branch_data.way, 
+		v_new_way_geom_end := ST_LineSubstring(branch_data.way, 
 									v_closest_point_loc, 
 									1); -- (from location of closest point to 100%)
 		-- Length of the second part in meters.
@@ -3498,7 +3498,7 @@ FROM
         ln.voltage=pt.voltage
     ORDER BY ln_id,pt_geom,pt_id
     ) as subquery
-WHERE ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom)>0 and ST_line_locate_point(ST_LineMerge(ln_geom), pt_geom) < 1
+WHERE ST_LineLocatePoint(ST_LineMerge(ln_geom), pt_geom)>0 and ST_LineLocatePoint(ST_LineMerge(ln_geom), pt_geom) < 1
 );
 END LOOP;
 DROP TABLE IF EXISTS branch_data_new_busses;
