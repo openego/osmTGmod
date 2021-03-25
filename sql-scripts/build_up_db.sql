@@ -22,11 +22,11 @@ Contains: Proportions of the code by "Wuppertal Institut" (2015)
                  
 CREATE SCHEMA IF NOT EXISTS results;
 
-DROP VIEW IF EXISTS results.view_bus_data;
-DROP VIEW IF EXISTS results.view_branch_data;
-DROP VIEW IF EXISTS results.view_dcline_data;
+DROP VIEW IF EXISTS osmtgmod_results.view_bus_data;
+DROP VIEW IF EXISTS osmtgmod_results.view_branch_data;
+DROP VIEW IF EXISTS osmtgmod_results.view_dcline_data;
 
-CREATE TABLE IF NOT EXISTS results.results_metadata(
+CREATE TABLE IF NOT EXISTS osmtgmod_results.results_metadata(
 	id INT NOT NULL PRIMARY KEY,
 	osm_date DATE,
 	abstraction_date DATE,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS results.results_metadata(
 	applied_year INT,
 	user_comment TEXT);
 
-CREATE TABLE IF NOT EXISTS results.bus_data(
+CREATE TABLE IF NOT EXISTS osmtgmod_results.bus_data(
 
 
 		result_id INT,
@@ -64,12 +64,12 @@ CREATE TABLE IF NOT EXISTS results.bus_data(
                 geom geometry(Point, 4326),        -- Point Geometry (Not simplified) WGS84
                 osm_name TEXT);
 
-ALTER TABLE results.bus_data DROP CONSTRAINT IF EXISTS result_fk;		
-ALTER TABLE results.bus_data
-	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
+ALTER TABLE osmtgmod_results.bus_data DROP CONSTRAINT IF EXISTS result_fk;		
+ALTER TABLE osmtgmod_results.bus_data
+	ADD CONSTRAINT result_fk foreign key (result_id) references osmtgmod_results.results_metadata (id) ON DELETE CASCADE;
 
                      
-CREATE TABLE IF NOT EXISTS results.branch_data(
+CREATE TABLE IF NOT EXISTS osmtgmod_results.branch_data(
 
 		result_id INT,
 		view_id SERIAL NOT NULL PRIMARY KEY,
@@ -100,12 +100,12 @@ CREATE TABLE IF NOT EXISTS results.branch_data(
                 topo geometry (LineString, 4326));      -- Line Geometry (simplified) WGS84
                 --connected_via INT); 		       -- states if branch has been there or was implemented to connect subgrid or transfer-bus
 
-ALTER TABLE results.branch_data DROP CONSTRAINT IF EXISTS result_fk;		
-ALTER TABLE results.branch_data 
-	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
+ALTER TABLE osmtgmod_results.branch_data DROP CONSTRAINT IF EXISTS result_fk;		
+ALTER TABLE osmtgmod_results.branch_data 
+	ADD CONSTRAINT result_fk foreign key (result_id) references osmtgmod_results.results_metadata (id) ON DELETE CASCADE;
 
 	
-CREATE TABLE IF NOT EXISTS results.dcline_data (
+CREATE TABLE IF NOT EXISTS osmtgmod_results.dcline_data (
 
 		result_id INT,
 		view_id SERIAL NOT NULL PRIMARY KEY,
@@ -140,9 +140,9 @@ CREATE TABLE IF NOT EXISTS results.dcline_data (
                geom geometry (MultiLineString, 4326), -- Line Geometry (Not simplified) WGS84
                topo geometry (LineString, 4326));    
 
-ALTER TABLE results.dcline_data DROP CONSTRAINT IF EXISTS result_fk;		
-ALTER TABLE results.dcline_data 
-	ADD CONSTRAINT result_fk foreign key (result_id) references results.results_metadata (id) ON DELETE CASCADE;
+ALTER TABLE osmtgmod_results.dcline_data DROP CONSTRAINT IF EXISTS result_fk;		
+ALTER TABLE osmtgmod_results.dcline_data 
+	ADD CONSTRAINT result_fk foreign key (result_id) references osmtgmod_results.results_metadata (id) ON DELETE CASCADE;
 
 -- Table for important abstraction values (still not entirely in use)
 DROP TABLE IF EXISTS abstr_values;

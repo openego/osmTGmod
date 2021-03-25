@@ -3088,15 +3088,15 @@ BEGIN
 v_downLoaded := (SELECT downloaded FROM osm_metadata);
 v_abstracted := current_date;
 
-v_new_id := (SELECT max(id) + 1 FROM results.results_metadata);
+v_new_id := (SELECT max(id) + 1 FROM osmtgmod_results.results_metadata);
 IF v_new_id IS NULL 
 	THEN v_new_id := 1; END IF;
 
-INSERT INTO results.results_metadata(id, osm_date, abstraction_date) 
+INSERT INTO osmtgmod_results.results_metadata(id, osm_date, abstraction_date) 
 	VALUES (v_new_id, v_downloaded, v_abstracted);
 
 
-INSERT INTO results.bus_data (
+INSERT INTO osmtgmod_results.bus_data (
 	result_id, 
 	bus_i, 
 	bus_type, 
@@ -3130,7 +3130,7 @@ INSERT INTO results.bus_data (
 			(SELECT name FROM power_substation WHERE power_substation.id = substation_id LIMIT 1) as osm_name
 				FROM bus_data;            
 
- INSERT INTO results.branch_data(
+ INSERT INTO osmtgmod_results.branch_data(
 	result_id,
 	branch_id,
 	f_bus,
@@ -3179,7 +3179,7 @@ INSERT INTO results.bus_data (
 				FROM branch_data;
  
 
-INSERT INTO results.dcline_data(
+INSERT INTO osmtgmod_results.dcline_data(
 	result_id,
 	dcline_id,
 	f_bus,
