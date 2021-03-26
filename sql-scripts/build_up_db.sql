@@ -20,7 +20,7 @@ Contains: Proportions of the code by "Wuppertal Institut" (2015)
 --  limitations under the License. 
 */
                  
-CREATE SCHEMA IF NOT EXISTS results;
+CREATE SCHEMA IF NOT EXISTS osmtgmod_results;
 
 DROP VIEW IF EXISTS osmtgmod_results.view_bus_data;
 DROP VIEW IF EXISTS osmtgmod_results.view_branch_data;
