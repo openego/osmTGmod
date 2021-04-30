@@ -1841,12 +1841,15 @@ IF (SELECT val_bool
 	-- All the substations that are already osmTGmod busses can be ignored
 	DELETE FROM transfer_busses_connect
 		WHERE osm_id IN (SELECT substation_id FROM bus_data);
+	DROP TABLE IF EXISTS transfer_busses_connect_all;
+	CREATE TABLE transfer_busses_connect_all AS 
+		SELECT * FROM transfer_busses_connect; -- for debugging, to see which ones are connected by the algorithm
 
 	LOOP -- Loops until all transfer busses are connected.
 		v_cnt := (SELECT count(*) FROM transfer_busses_connect);
 		EXIT WHEN v_cnt = 0;
 		raise notice '%',v_cnt;
-		v_smallest_dist := 10000000; -- Initial buffer size in meters (=100km)...
+		v_smallest_dist := 25000; -- Initial buffer size in meters (=100km)...
 		--... within this buffer the first buffer will search for lines...
 		--... the buffer will then be lowered anytime a closer line is found.
 
@@ -1868,15 +1871,10 @@ IF (SELECT val_bool
 					FROM branch_data
 					WHERE 	ST_Intersects(way, v_search_area) AND -- Just the lines/branches within that intersect the buffer
 						frequency = 50 -- Only connection to AC system
-					ORDER BY voltage -- begin with smallest voltage in order to preferably connect to 110 kV branches
+					--ORDER BY voltage -- begin with smallest voltage in order to preferably connect to 110 kV branches
 			LOOP
 				-- Calculates the exact shortest Distance on the Line:
-				v_closest_point_loc := ST_LineLocatePoint(	v_branch.way, 
-										v_trans_bus.center_geom); --FLOAT between 0 and 1 (Point location on Linesting)
-				-- Geometry of the closest point:
-				v_closest_point_geom := ST_LineInterpolatePoint(v_branch.way, 
-										v_closest_point_loc); -- Geometry of closest point
-										
+				v_closest_point_geom := ST_ClosestPoint(v_branch.way, v_trans_bus.center_geom); -- Geometry of closest point				
 				v_this_dist := ST_Distance(	v_trans_bus.center_geom::geography, 
 								v_closest_point_geom::geography); -- in meters
 					-- ST_Distance looks for uses closest point on line!
@@ -1919,21 +1917,6 @@ IF (SELECT val_bool
 				50,
 				v_trans_bus_id, -- substation_id of transfer_bus to be connected
 				'DE');
-
-                IF v_branch_voltage > 110000 THEN
-		INSERT INTO bus_data (	id, 
-					the_geom, 
-					voltage, 
-					frequency, 
-					substation_id, 
-					cntr_id)
-			VALUES (v_max_bus_id + 3, 
-				v_trans_bus_geom, -- geom of transfer_bus to be connected
-				110000, -- if branch to connect line is not 110 kV, the transfer_bus should still be 110 kV.
-				50,
-				v_trans_bus_id, -- substation_id of transfer_bus to be connected
-				'DE');
-		END IF;
 
 		-- 2) The closest point needs to be located on the line:
 		
