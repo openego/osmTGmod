@@ -1919,13 +1919,11 @@ IF (SELECT val_bool
 				'DE');
 
 		-- 2) The closest point needs to be located on the line:
-		
-		-- The closest point on the line (used for connection) is located:
 		v_closest_point_loc := ST_LineLocatePoint(	v_branch_way, 
 								v_trans_bus_geom); --FLOAT between 0 and 1 (Point location on Linesting)
-		-- Geometry of the closest point:
-		v_closest_point_geom := ST_LineInterpolatePoint(v_branch_way, 
-								v_closest_point_loc); -- Geometry of closest point
+		-- The closest point on the line (used for connection) is located:
+		v_closest_point_geom := ST_ClosestPoint(v_branch_way, 
+								v_trans_bus_geom); -- Geometry of closest point
 
 		-- Checks if any grid-bus is less than 75m (along the line) away
 		v_closest_bus_id := NULL;
