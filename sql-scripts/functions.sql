@@ -2462,7 +2462,7 @@ v_Bl_TOS REAL; -- Blindleitwert (1/Ohm) eines Trafos der angegebenen Spezifikati
 v_Bl_TOS_all REAL; -- Gesamter Blindleitwert der zwischen zwei Knoten parallel geschalteten Transformatoren
 v_X_TOS_all REAL; -- Gesamter Blindwiderstand der zwischen zwei Knoten parallel geschalteten Transformatoren
 
-v_S_long_MVA_sum_max REAL; -- Größere der von den beiden Verbindungsknoten zu übertragenden Leistung (Für Bemessung des Transformators)
+v_S_long_MVA_sum_min REAL; -- Kleinere der von den beiden Verbindungsknoten zu übertragenden Leistung (Für Bemessung des Transformators)
 v_numb_transformers INT; -- Anzahl der einzubauenden Transformatoren pro Knotenpaar
 
 BEGIN 
@@ -2472,7 +2472,7 @@ FOR v_branch IN
 		
 		
 
-		v_S_long_MVA_sum_max := (10^(-6))*(SELECT max (S_long_sum) 
+		v_S_long_MVA_sum_min := (10^(-6))*(SELECT min (S_long_sum) 
 						FROM bus_data 
 						WHERE id = v_branch.f_bus OR id = v_branch.t_bus);
 
@@ -2485,7 +2485,7 @@ FOR v_branch IN
 					WHERE 	id = v_branch.f_bus OR 
 						id = v_branch.t_bus);	
 					
-		v_numb_transformers := (SELECT ceil(v_S_long_MVA_sum_max / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US))); -- Wird auf nächste ganze Zahl aufgerundet.
+		v_numb_transformers := (SELECT ceil(v_S_long_MVA_sum_min / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US))); -- Wird auf nächste ganze Zahl aufgerundet.
 						
 		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
