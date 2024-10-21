@@ -2485,7 +2485,7 @@ FOR v_branch IN
 					WHERE 	id = v_branch.f_bus OR 
 						id = v_branch.t_bus);	
 					
-		v_numb_transformers := (SELECT ceil(v_S_long_MVA_sum_min / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US))); -- Wird auf nächste ganze Zahl aufgerundet.
+		v_numb_transformers := (SELECT CASE WHEN ceil(v_S_long_MVA_sum_min / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US)) = 0 THEN 1 ELSE ceil(v_S_long_MVA_sum_min / (SELECT S_MVA FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US)) END); -- Wird auf nächste ganze Zahl aufgerundet.
 						
 		v_Srt := (SELECT S_MVA * 10^6 FROM transformer_specifications WHERE U_OS = v_U_OS AND U_US = v_U_US);
 		
