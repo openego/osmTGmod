@@ -728,7 +728,9 @@ SELECT otg_substract_circuits() ;
 -- Durch den Puffer (otg_connect_dead_ends_with_substation) "Übergangene" Leitungen (Tabelle power_line) werden angepasst.
 -- Dies kann erst an dieser Stelle geschehen, damit nicht unkontrolliert cables von den power_line abgezogen werden
 -- (sondern nur die bis hier überbleibenden betrachtet werden)
-SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE buffered = true AND origin = 'rel'; -- Also alle erfolgreichen Buffer
+-- One ordered call per buffered bus, see
+-- otg_substract_cables_within_buffer_all in functions.sql
+SELECT otg_substract_cables_within_buffer_all ();
 
 
 	-- PROBLEM: CABLE CONFLICT
@@ -905,7 +907,15 @@ INSERT INTO  branch_data (	relation_id,
 				frequency, 
 				power)
 	SELECT relation_id, line_id, f_bus, t_bus, length, way, voltage, cables, wires, frequency, power 
-		FROM power_circ_members;
+		FROM power_circ_members
+		-- Ordered by every selected column. branch_id is a serial, so the
+		-- insert order decides it, and a partial key is not enough: on a
+		-- full-Germany run power_line_sep contains a pair identical in
+		-- line_id, voltage, f_bus and t_bus that differs only in cables.
+		-- Any tie that survives this is between fully identical rows,
+		-- where the id assignment cannot be observed. See https://github.com/openego/eGon-data/issues/769.
+		ORDER BY relation_id, line_id, f_bus, t_bus, length,
+			 ST_AsBinary(way), voltage, cables, wires, frequency, power;
 		
 INSERT INTO  branch_data (	relation_id, 
 				line_id,
@@ -919,7 +929,15 @@ INSERT INTO  branch_data (	relation_id,
 				frequency,
 				power)
 	SELECT relation_id, line_id, f_bus, t_bus, length, way, voltage, cables, wires, frequency, power 
-		FROM power_line_sep ;
+		FROM power_line_sep
+		-- Ordered by every selected column. branch_id is a serial, so the
+		-- insert order decides it, and a partial key is not enough: on a
+		-- full-Germany run power_line_sep contains a pair identical in
+		-- line_id, voltage, f_bus and t_bus that differs only in cables.
+		-- Any tie that survives this is between fully identical rows,
+		-- where the id assignment cannot be observed. See https://github.com/openego/eGon-data/issues/769.
+		ORDER BY relation_id, line_id, f_bus, t_bus, length,
+			 ST_AsBinary(way), voltage, cables, wires, frequency, power;
 
 
 
@@ -1142,7 +1160,9 @@ DELETE FROM power_substation WHERE id NOT IN (SELECT substation_id FROM bus_data
 		
 -- Neue Spalte für Leistung (maximalleistung der Knoten)		
 ALTER TABLE power_substation ADD COLUMN s_long NUMERIC;
-UPDATE power_substation SET s_long = (SELECT sum(s_long_sum) --sum instead of max!
+-- Ordered for the same reason as the sums in otg_calc_max_node_power:
+-- s_long_sum is `real`, so an unordered sum is not reproducible.
+UPDATE power_substation SET s_long = (SELECT sum(s_long_sum ORDER BY s_long_sum) --sum instead of max!
 					FROM bus_data 
 					WHERE substation_id = power_substation.id);
 -- additional column for center					
