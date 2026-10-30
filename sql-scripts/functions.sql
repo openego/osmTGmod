@@ -614,6 +614,13 @@ BEGIN
 						
 				AND id != v_id_line.id -- Soll nicht sich selbst auswählen
 				AND NOT otg_array_search (v_volt, voltage_array) IS NULL -- Spannung muss in gesuchter Leitung (mindestens einmal) vorhanden sein vorhanden sein!
+				-- ORDER BY is required: the loop body appends each match into
+				-- v_all_neighbours at a running v_count, so the neighbour order
+				-- inside the array follows the scan order. The array holds only
+				-- 10 slots per voltage level and end, so with more than 10
+				-- neighbours the scan order also decides *which* are kept. The
+				-- heuristics then walk the array by index. See https://github.com/openego/eGon-data/issues/769.
+				ORDER BY id
  
 		LOOP
 			v_lev := otg_array_search_2 (v_volt, v_current_line.voltage_array); -- Alle möglichen spannugns-Nachbarn der benachbarten Leitung (Array)
@@ -644,6 +651,13 @@ BEGIN
 						
 				AND id != v_id_line.id -- Soll nicht sich selbst auswählen
 				AND NOT otg_array_search (v_volt, voltage_array) IS NULL -- Spannung muss in gesuchter Leitung vorhanden sein vorhanden sein!
+				-- ORDER BY is required: the loop body appends each match into
+				-- v_all_neighbours at a running v_count, so the neighbour order
+				-- inside the array follows the scan order. The array holds only
+				-- 10 slots per voltage level and end, so with more than 10
+				-- neighbours the scan order also decides *which* are kept. The
+				-- heuristics then walk the array by index. See https://github.com/openego/eGon-data/issues/769.
+				ORDER BY id
 
 		LOOP
 			v_lev := otg_array_search_2 (v_volt, v_current_line.voltage_array); -- Alle möglichen spannugns-Nachbarn der benachbarten Leitung (Array)
@@ -723,6 +737,11 @@ FOR v_line IN
 		-- ...gilt nur für Freileitungen
 		WHERE 	otg_check_all_cables_complete (id) = false AND 
 			power = 'line'
+		-- These heuristics propagate constraints: each iteration UPDATEs
+		-- power_line, so resolving one line before another changes which
+		-- unknowns get filled and with what. Without a defined order the
+		-- result differs between runs. See https://github.com/openego/eGon-data/issues/769.
+		ORDER BY id
 		
 LOOP
 	-- Falls alle frequenzen bekannt sind und = 50 UND
@@ -775,6 +794,11 @@ CREATE TABLE all_neighbours (
 FOR v_id_line IN 
 	SELECT id, all_neighbours, voltage_array, cables_array, frequency_array 
 		FROM power_line 
+		-- These heuristics propagate constraints: each iteration UPDATEs
+		-- power_line, so resolving one line before another changes which
+		-- unknowns get filled and with what. Without a defined order the
+		-- result differs between runs. See https://github.com/openego/eGon-data/issues/769.
+		ORDER BY id
 		-- An dieser Stelle reicht es nicht aus zu untersuchen, ob alle Cables vorhanden sind.
 		-- Auch ob alle Frequencys vorhanden sind müsste untersucht werden
 		-- Dies geschieht aber bereits am Anfang der 1. Schleife und sollte daher schnell genug sein.
@@ -887,6 +911,11 @@ FOR v_line IN
 		FROM power_line 
 		WHERE 	otg_check_all_cables_complete (id) = false 
 			AND power = 'line' -- Annahme gilt nur für Freileitungen und nicht vollständige cables
+		-- These heuristics propagate constraints: each iteration UPDATEs
+		-- power_line, so resolving one line before another changes which
+		-- unknowns get filled and with what. Without a defined order the
+		-- result differs between runs. See https://github.com/openego/eGon-data/issues/769.
+		ORDER BY id
 LOOP
 	-- Falls nur noch 1 Level unbekannt und cables_sum existiert	
 	IF (otg_numb_unknown_cables_lev (v_line.id) = 1) AND (NOT v_line.cables_sum IS NULL)
@@ -1017,6 +1046,9 @@ FOR v_line IN
 		startpoint,
 		endpoint
 		FROM power_line
+		-- Ordered so power_line_sep is built in a defined order; its heap
+		-- order otherwise leaks into the branch_id serial downstream.
+		ORDER BY id
 LOOP
 	FOR i IN 1..v_line.numb_volt_lev LOOP
 		INSERT INTO  power_line_sep (relation_id, 
@@ -1077,7 +1109,13 @@ FOR v_params IN
 		-- Geht alle Kombinationen von Spannung und Frequenz (und relation_id) durch 
 		-- Dadurch werden circuits nur einzeln betrachtet
 		-- alle Ways haben die selbe relation_id und werde daher (automatisch) nicht nach dieser unterschieden
-	EXECUTE 'SELECT relation_id as id, voltage, frequency FROM '|| v_table ||' GROUP BY relation_id, voltage, frequency' 
+	-- ORDER BY is required, not cosmetic: the loop body offsets the
+	-- vertex ids produced by pgr_createTopology by the running
+	-- max(id) of bus_data, so bus ids are handed out in loop order.
+	-- Without a defined order the whole grid is numbered differently
+	-- from run to run, and because pgr_createTopology snaps endpoints
+	-- within its tolerance the number of buses can change too.
+	EXECUTE 'SELECT relation_id as id, voltage, frequency FROM '|| v_table ||' GROUP BY relation_id, voltage, frequency ORDER BY relation_id, voltage, frequency' 
 LOOP	
 
 	-- Diese Tabelle wird von creatTopology automatisch erstellt und muss vorher gelöscht werden			
@@ -1102,7 +1140,17 @@ LOOP
 			FROM '|| v_table || ' as main
 			WHERE 	main.relation_id = '|| v_params.id ||' 
 				AND main.voltage = '|| v_params.voltage ||'
-				AND main.frequency = '|| v_params.frequency;
+				AND main.frequency = '|| v_params.frequency ||'
+			-- pgr_createTopology walks this table with no ORDER BY of
+			-- its own and hands out vertex ids from a bigserial as new
+			-- points appear, so its numbering follows the scan order.
+			-- Worse, _pgr_pointToId decides whether a point is new or
+			-- identical to an existing one using the tolerance, so the
+			-- visitation order can change which endpoints get merged and
+			-- hence the vertex set itself. Filling this table in a
+			-- defined order makes the scan order, and with it the
+			-- topology, reproducible.
+			ORDER BY line_id';
 
 	-- pgr_createTopology should not be used.
 	PERFORM pgr_createTopology (	'branch_data_topo', --source und target werden immer wieder auf NULL gesetzt und Topologie neu berechnet.
@@ -1193,10 +1241,26 @@ BEGIN
 
 UPDATE bus_data
 SET 	substation_id = 
+	-- This is the ambiguous one: on a Schleswig-Holstein run 136 of 487
+	-- buses have two or more substations inside their 400 m buffer (up to
+	-- five), so the LIMIT 1 was picking one of them with no defined rule.
+	-- It did not vary between runs here only because a stable query plan
+	-- happens to return a stable row -- it is unspecified, not stable, and
+	-- would move on another PostgreSQL version or with different
+	-- statistics.
+	--
+	-- NOTE this also implements the original TODO on this line ("verbessern:
+	-- wenn Buffer mehrere findet soll er nähere nehmen"), so it is a
+	-- deliberate behaviour change, not just a tie-break: the nearest
+	-- substation is now chosen rather than an arbitrary one. See https://github.com/openego/eGon-data/issues/769.
 	(SELECT power_substation.id AS substation_id 
 		FROM power_substation, bus_data bus
 		WHERE 	ST_Intersects ((ST_Buffer(bus.the_geom::geography, 400)::geometry), power_substation.poly) AND -- = 300m Buffer -- to check:::geography, 400)::geometry
-			bus.id = bus_data.id LIMIT 1), -- verbessern: wenn Buffer mehrer findet soll er nähere nehmen!
+			bus.id = bus_data.id
+		ORDER BY ST_Distance (bus.the_geom::geography,
+				      power_substation.poly::geography),
+			 power_substation.id
+		LIMIT 1),
 	buffered = true
 	WHERE cnt = 1 AND substation_id IS NULL AND origin = 'rel';
 -- Das obere Update wird immer durchgeführt, auch wenn keine Überschneidung stattfindet
@@ -1241,6 +1305,9 @@ BEGIN
 				v_bus.substation_id = point_substation_id [2]) OR
 				(v_bus.the_geom = power_line.endpoint AND
 				v_bus.substation_id = point_substation_id [1]))
+			-- Ordered: the body UPDATEs power_line, so the order in which
+			-- lines have their cables subtracted changes the result.
+			ORDER BY id
 			
 			
 	LOOP
@@ -1354,21 +1421,33 @@ BEGIN
 
 -- Jedem Knoten wird eine Länderkennung gegeben
 UPDATE bus_data
+	-- Hardening only: no two stat_levl_ = 0 polygons in nuts_poly overlap
+	-- (checked: 0 overlapping pairs), so this subquery can never match more
+	-- than one row and the LIMIT 1 cannot pick differently. Ordered anyway
+	-- so the query does not rely on that property holding. See https://github.com/openego/eGon-data/issues/769.
 	SET cntr_id = 	(SELECT nuts.nuts_id
 			FROM nuts_poly nuts, bus_data bus
 			WHERE 	ST_Within (bus.the_geom, nuts.geom) AND
 				nuts.stat_levl_ = 0 AND -- Damit nur komplette Länder berücksichtigt werden (erste Ebene)
-				bus.id = bus_data.id LIMIT 1)
+				bus.id = bus_data.id
+			ORDER BY nuts.nuts_id
+			LIMIT 1)
 	WHERE origin = v_origin;
 
 
 -- untersuchung Substations
 UPDATE bus_data
 	SET substation_id = 
+		-- Substation polygons do overlap in places (checked: 1 overlapping
+		-- pair), so a bus inside such an overlap used to get an arbitrary
+		-- station. Prefer the smallest enclosing polygon, i.e. the most
+		-- specific one, then the lowest id. See https://github.com/openego/eGon-data/issues/769.
 		(SELECT power_substation.id -- nimm die substation_id
 		FROM power_substation, bus_data bus
 		WHERE ST_Within (bus.the_geom, power_substation.poly) AND -- liegt ein ein bus innerhalb einer station?
-			bus.id = bus_data.id LIMIT 1)
+			bus.id = bus_data.id
+		ORDER BY ST_Area (power_substation.poly), power_substation.id
+		LIMIT 1)
 	WHERE origin = v_origin;
 		
 
@@ -1510,6 +1589,11 @@ BEGIN
 		SELECT distinct on (substation_id, voltage, frequency) voltage, substation_id, frequency, cntr_id 
 		FROM bus_data
 		WHERE NOT substation_id IS NULL 
+		-- DISTINCT ON without ORDER BY leaves the surviving row to the
+		-- planner, and cntr_id is not part of the key, so the merged bus
+		-- could take either country. The loop also hands out v_new_id
+		-- sequentially, so its order decides the new bus ids. See https://github.com/openego/eGon-data/issues/769.
+		ORDER BY substation_id, voltage, frequency, cntr_id
 	LOOP
 	CONTINUE WHEN v_subst_bus.substation_id = 0; --Auslands-Umspannwerke bestehen aus "offenen Enden" und können nicht ineinander verbunden werden
 
@@ -1569,11 +1653,11 @@ i INT;
 BEGIN
 FOR v_substation IN 
 	SELECT id FROM power_substation 
-		WHERE id IN (SELECT substation_id FROM bus_data WHERE NOT substation_id IS NULL) -- Dadurch fallen die offenen Auslands-Enden raus (diese brauchen auch nicht betrachtet zu werden)
+		WHERE id IN (SELECT substation_id FROM bus_data WHERE NOT substation_id IS NULL) ORDER BY id -- Dadurch fallen die offenen Auslands-Enden raus
 	LOOP
 	-- v_buses ist Array mit den IDs der Knoten innerhalb eines Umspannwerks
 	-- Dieses wird nach Spannung geordnet, damit Spannungsebenen der Reihe nach verbunden werden.
-	v_buses := (SELECT ARRAY (SELECT id FROM bus_data WHERE substation_id = v_substation.id ORDER BY voltage)); --v_substation.id);
+	v_buses := (SELECT ARRAY (SELECT id FROM bus_data WHERE substation_id = v_substation.id ORDER BY voltage, id));
 	v_numb_buses := array_length (v_buses, 1);
 	IF v_numb_buses > 1 THEN -- Also verschiedene, betrachtete Spannungsebenen im Umspannwerk ankommen
 		FOR i IN 1..(v_numb_buses - 1) 
@@ -1623,6 +1707,12 @@ BEGIN
 		SELECT line_ids, ways, f_bus, t_bus, length, relation_id, voltage, cables, frequency, wires, power 
 		FROM branch_data
 		WHERE branch_data.f_bus = v_vertex_id OR branch_data.t_bus = v_vertex_id
+		-- ORDER BY is required: the body concatenates each branch onto
+		-- v_line_ids, v_ways, v_f_bus_t_bus and friends, and adds up length,
+		-- so the loop order decides the merged branch's array contents,
+		-- which endpoint becomes f_bus, and the last bits of the summed
+		-- REAL length.
+		ORDER BY branch_id
 	LOOP 
 	IF v_line.f_bus <> v_vertex_id THEN v_f_bus_t_bus := v_f_bus_t_bus || v_line.f_bus; END IF;
 	IF v_line.t_bus <> v_vertex_id THEN v_f_bus_t_bus := v_f_bus_t_bus || v_line.t_bus; END IF;
@@ -1700,6 +1790,7 @@ AS $$
 DECLARE
 v_count_old INT;
 v_count_new INT;
+v_bus RECORD;
 BEGIN
 
 	UPDATE bus_data 
@@ -1710,7 +1801,18 @@ BEGIN
 	v_count_new := (SELECT count (*) FROM bus_data Where cnt = 2 AND substation_id IS NULL);
 	
 	LOOP
-	PERFORM otg_simplify_branches (id) FROM bus_data WHERE cnt = 2 AND substation_id IS NULL; 
+	-- An explicit loop, not `PERFORM f(id) FROM bus_data ... ORDER BY id`:
+	-- in a SELECT the target list is evaluated before the sort, so the
+	-- call order would still be undefined. Each call merges the two
+	-- branches meeting at a degree-2 bus, so the order decides how chains
+	-- combine. See https://github.com/openego/eGon-data/issues/769.
+	FOR v_bus IN
+		SELECT id FROM bus_data
+		WHERE cnt = 2 AND substation_id IS NULL
+		ORDER BY id
+	LOOP
+		PERFORM otg_simplify_branches (v_bus.id);
+	END LOOP;
 	DELETE FROM branch_data WHERE f_bus = t_bus;
 	UPDATE bus_data 
 	SET cnt = (SELECT count (*) 
@@ -1857,7 +1959,7 @@ IF (SELECT val_bool
 		-- ... and finds the one that is closest to the grid.
 		FOR v_trans_bus IN
 			SELECT osm_id, center_geom
-				FROM transfer_busses_connect
+				FROM transfer_busses_connect ORDER BY osm_id
 		
 		LOOP
 			-- Geography allows to set the buffer radius in meters.
@@ -1871,7 +1973,15 @@ IF (SELECT val_bool
 					FROM branch_data
 					WHERE 	ST_Intersects(way, v_search_area) AND -- Just the lines/branches within that intersect the buffer
 						frequency = 50 -- Only connection to AC system
-					--ORDER BY voltage -- begin with smallest voltage in order to preferably connect to 110 kV branches
+					-- The winner below is chosen with a strict `<`, so on an exact
+					-- distance tie the first row the scan returns wins. Ties are
+					-- routine here: once otg_connect_busses_to_lines_1 has split a
+					-- line at a shared vertex, a transfer bus is exactly equidistant
+					-- from both halves. Ordered by geometry rather than branch_id so
+					-- this does not depend on the serial upstream.
+					-- The original --ORDER BY voltage (preferring 110 kV) was a
+					-- semantic preference and is deliberately left disabled.
+					ORDER BY ST_AsBinary(way), branch_id
 			LOOP
 				-- Calculates the exact shortest Distance on the Line:
 				v_closest_point_geom := ST_ClosestPoint(v_branch.way, v_trans_bus.center_geom); -- Geometry of closest point				
@@ -2131,8 +2241,16 @@ IF (SELECT val_bool
  	THEN 
  	
  	UPDATE bus_data SET discovered = false;
+ 	-- The main station carries one bus per voltage level, so this
+ 	-- LIMIT 1 used to pick the traversal root arbitrarily. Rooting the
+ 	-- graph at a different bus explores a different component, which
+ 	-- changes which buses end up `discovered` and therefore the whole
+ 	-- set of subgrids to be connected below. Root it at the highest
+ 	-- voltage level of the designated main station instead, which is
+ 	-- both deterministic and the sensible seed for a transmission grid.
  	PERFORM otg_graph_dfs ((SELECT id FROM bus_data 
 			WHERE substation_id = (SELECT val_int FROM abstr_values WHERE val_description = 'main_station')
+			ORDER BY voltage DESC, id
 			LIMIT 1));
  	
  	CREATE TABLE subgrids_connect AS -- New table for calculation of subgrids to connect 
@@ -2146,6 +2264,7 @@ IF (SELECT val_bool
  			FOR v_subgrid_bus IN
  				SELECT id, the_geom, voltage
  					FROM subgrids_connect
+ 					ORDER BY id -- same strict-`<` tie-break as above
  			LOOP
  				FOR v_substation IN
  				SELECT id, voltage, the_geom
@@ -2154,7 +2273,7 @@ IF (SELECT val_bool
 						NOT substation_id IS NULL AND -- Only substations no grid busses (Muffen) -- DK: entfernt, weil zum Zeitpunkt der Ausführung des Skiptes diemeisten Muffen schon entfernt wurden.
  						discovered = true AND
  						voltage = v_subgrid_bus.voltage
- 					ORDER BY voltage -- Will be connected with 110 preferred
+ 					ORDER BY voltage, id -- Will be connected with 110 preferred; id makes the order total
  				LOOP
  				v_this_dist := ST_Distance(	v_subgrid_bus.the_geom::geography, 
  								v_substation.the_geom::geography);
@@ -2281,15 +2400,15 @@ CREATE TABLE buffers_matching_busses AS
     (SELECT ST_Buffer_Meters(the_geom,10) AS buffer, voltage AS base_kv, array_agg(substation_id) AS substation_ids, count(*) 
         FROM bus_data GROUP BY the_geom, base_kv ORDER BY base_kv,count(the_geom));
 
-FOR this_buffer, this_base_kv IN (SELECT buffer,base_kv FROM buffers_matching_busses) LOOP
+FOR this_buffer, this_base_kv IN (SELECT buffer,base_kv FROM buffers_matching_busses ORDER BY base_kv, ST_AsBinary(buffer)) LOOP
         UPDATE branch_data 
-            SET t_bus=(SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv) ORDER BY substation_id LIMIT 1) 
+            SET t_bus=(SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv) ORDER BY substation_id, id LIMIT 1) 
             WHERE t_bus IN (SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv));
         UPDATE branch_data 
-            SET f_bus=(SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv) ORDER BY substation_id LIMIT 1) 
+            SET f_bus=(SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv) ORDER BY substation_id, id LIMIT 1) 
             WHERE f_bus IN (SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv));
         DELETE FROM bus_data
-            WHERE id IN (SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv) ORDER BY substation_id OFFSET 1);
+            WHERE id IN (SELECT id FROM bus_data WHERE (ST_Intersects(the_geom,this_buffer) AND voltage=this_base_kv) ORDER BY substation_id, id OFFSET 1);
         DELETE FROM branch_data
             WHERE t_bus=f_bus;  
     END LOOP;
@@ -2418,17 +2537,21 @@ v_s_long_sum_dcline REAL;
 
 BEGIN
 FOR v_bus IN
-	SELECT id FROM bus_data WHERE NOT substation_id IS NULL
+	SELECT id FROM bus_data WHERE NOT substation_id IS NULL ORDER BY id
 	LOOP
 	v_s_long_sum := 0;
-	v_s_long_sum_branch := (SELECT sum (S_long) 
+	-- Ordered: adding `real` values is not associative, so an unordered
+	-- sum over a group differs in its last bits depending on the order
+	-- the aggregate happens to see the rows in. Ordering by the value
+	-- makes the sum a function of the multiset alone. See https://github.com/openego/eGon-data/issues/769.
+	v_s_long_sum_branch := (SELECT sum (S_long ORDER BY S_long) 
 						FROM branch_data 
 						WHERE 	(f_bus = v_bus.id OR t_bus = v_bus.id)
 							AND (power = 'line' OR power = 'cable'));
 	IF NOT v_s_long_sum_branch IS NULL 
 		THEN v_s_long_sum := v_s_long_sum + v_s_long_sum_branch; END IF;
 		
-	v_s_long_sum_dcline := (SELECT sum (pmax)
+	v_s_long_sum_dcline := (SELECT sum (pmax ORDER BY pmax)
 						FROM dcline_data
 						WHERE f_bus = v_bus.id OR t_bus = v_bus.id);
 	IF NOT v_s_long_sum_dcline IS NULL 
@@ -3372,10 +3495,10 @@ IF (SELECT COUNT(*) FROM branch_data_new_busses) < 1 THEN
 	EXIT;
 END IF;
 FOR branch IN
-	SELECT * FROM branch_data_new_busses
+	SELECT * FROM branch_data_new_busses ORDER BY ln_id, ST_AsBinary(pt_geom)
 	LOOP
 	--select corresponding element in power_line_sep (if it still should exist and was not already deleted...)
-	FOR branch_data IN SELECT * FROM power_line_sep WHERE line_id=branch.ln_id LIMIT 1
+	FOR branch_data IN SELECT * FROM power_line_sep WHERE line_id=branch.ln_id ORDER BY line_id, f_bus, t_bus LIMIT 1
 		LOOP
 		-- Calculates the exact shortest Distance on the Line:
 		v_closest_point_loc := ST_LineLocatePoint(branch_data.way,branch.pt_geom); --FLOAT between 0 and 1 (Point location on Linesting)
@@ -3514,7 +3637,7 @@ CREATE TABLE bus_data_combine_busses AS
 );
 
 FOR busses IN
-	SELECT * FROM bus_data_combine_busses
+	SELECT * FROM bus_data_combine_busses ORDER BY pt1_id, pt2_id
 	LOOP
 	IF (SELECT COUNT(*) FROM bus_data WHERE id=busses.pt1_id)>0 THEN
 		UPDATE power_line_sep SET f_bus=busses.pt1_id WHERE f_bus=busses.pt2_id;
@@ -3534,3 +3657,33 @@ $$
 LANGUAGE plpgsql;
 
 
+
+
+	-- SUBSTRACT_CABLES_WITHIN_BUFFER_ALL
+
+-- Calls otg_substract_cables_within_buffer for every buffered bus, in a
+-- defined order.
+--
+-- power_script.sql used to do this as
+--   SELECT otg_substract_cables_within_buffer (id) FROM bus_data WHERE ...
+-- which calls the function once per row in whatever order the scan returns,
+-- while each call UPDATEs power_line. Adding ORDER BY to that SELECT would
+-- not have helped: a target list is evaluated before the sort. It cannot be
+-- a DO block either, because egon-data splits power_script.sql on every
+-- semicolon outside single quotes and would tear a dollar-quoted body apart.
+-- Hence a named function. See https://github.com/openego/eGon-data/issues/769.
+CREATE OR REPLACE FUNCTION otg_substract_cables_within_buffer_all () RETURNS void
+AS $$
+DECLARE
+v_bus RECORD;
+BEGIN
+	FOR v_bus IN
+		SELECT id FROM bus_data
+		WHERE buffered = true AND origin = 'rel'
+		ORDER BY id
+	LOOP
+		PERFORM otg_substract_cables_within_buffer (v_bus.id);
+	END LOOP;
+END;
+$$
+LANGUAGE plpgsql;
